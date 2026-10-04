@@ -139,6 +139,8 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
   const ip = request.headers.get("CF-Connecting-IP");
   if (!ip)
     return response(503, { error: "The form is unavailable. Please try again later." }, origin);
+  let deliveryStarted = false;
+  let stableDeliveryIdentifier = false;
   try {
     // Each request consumes its IP bucket once; verified CAPTCHA gates email accounting. No shared origin bucket.
     const consume = async (factor: string, value: string, limit: number) => {
@@ -158,6 +160,7 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
     await consume("ip", ip, 5);
 
     const data = validate(await readBody(request));
+    stableDeliveryIdentifier = Boolean(env.RESEND_API_KEY && data.requestId);
 
     const verified = await fetchWithTimeout(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
@@ -200,6 +203,7 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
       ]),
     );
     const html = `<h2>Contact enquiry</h2><p>Name: ${escapeHtml(data.name)}</p><p>Email: ${escapeHtml(data.email)}</p><p>Subject: ${escapeHtml(data.subject!)}</p><p>${escapeHtml(data.message).replace(/\n/g, "<br>")}</p>`;
+    deliveryStarted = true;
     const sent = env.RESEND_API_KEY
       ? await fetchWithRetry("https://api.resend.com/emails", {
           method: "POST",
@@ -240,8 +244,11 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
       return response(
         504,
         {
-          error:
-            "The service timed out. Your message may have been accepted; retrying unchanged uses the same delivery identifier.",
+          error: !deliveryStarted
+            ? "Verification timed out. Please try again with fresh verification."
+            : stableDeliveryIdentifier
+              ? "The email service timed out. Your message may have been accepted; retrying unchanged uses the same Resend delivery identifier."
+              : "The email service timed out. Your message may have been accepted. Please wait before retrying; another attempt may deliver a duplicate.",
         },
         origin,
       );

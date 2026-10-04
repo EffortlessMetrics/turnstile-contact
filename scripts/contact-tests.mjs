@@ -482,6 +482,43 @@ try {
       }
     },
   );
+  await check(
+    "timeout guidance promises stable identity only for Resend with requestId",
+    async () => {
+      for (const kind of ["resend-id", "resend-legacy", "mailgun"]) {
+        const e = env(),
+          data = { ...body };
+        if (kind === "resend-legacy") delete data.requestId;
+        if (kind === "mailgun") {
+          delete e.RESEND_API_KEY;
+          e.MAILGUN_API_KEY = "mock-mailgun";
+          e.MAILGUN_DOMAIN = "mail.example";
+        }
+        let sends = 0;
+        const prior = globalThis.fetch;
+        globalThis.fetch = async (url, options) => {
+          if (String(url).includes("siteverify")) return prior(url, options);
+          sends++;
+          const error = new Error("ambiguous provider timeout");
+          error.name = "TimeoutError";
+          throw error;
+        };
+        try {
+          const result = await onRequestPost({ request: request(data), env: e });
+          assert.equal(result.status, 504);
+          const text = await result.text();
+          if (kind === "resend-id") assert.match(text, /same Resend delivery identifier/);
+          else {
+            assert.match(text, /may deliver a duplicate/);
+            assert.doesNotMatch(text, /same .*identifier/);
+          }
+          assert.equal(sends, kind === "mailgun" ? 1 : 2);
+        } finally {
+          globalThis.fetch = prior;
+        }
+      }
+    },
+  );
   await writeFile(
     ".evidence/contact-tests.json",
     JSON.stringify(
