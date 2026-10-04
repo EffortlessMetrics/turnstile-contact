@@ -4,7 +4,12 @@ import { sanitizeContactForm, sanitizeEmail, escapeHtml } from "./sanitize";
 import { ValidationError } from "./errors";
 import { API, SECURITY_HEADERS } from "./constants";
 import { allowedOrigins } from "./origins";
-import { checkRateLimitKV, generateClientKey, getRetryAfterSeconds } from "./rate-limit-kv";
+import {
+  checkRateLimitKV,
+  checkRateLimitMemory,
+  generateClientKey,
+  getRetryAfterSeconds,
+} from "./rate-limit-kv";
 import type { ContactEnv } from "./types";
 
 type Context = { request: Request; env: ContactEnv };
@@ -82,7 +87,6 @@ function validate(raw: unknown) {
     subject: 200,
     message: 5000,
     turnstileToken: 2048,
-    requestId: 36,
   })) {
     if (
       typeof data[key] !== "string" ||
@@ -92,9 +96,11 @@ function validate(raw: unknown) {
       throw new RequestError(400, "Check your message fields.");
   }
   if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      data.requestId as string,
-    )
+    data.requestId !== undefined &&
+    (typeof data.requestId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        data.requestId as string,
+      ))
   )
     throw new RequestError(400, "Invalid request identifier.");
   if (/[\r\n\u0000]/.test(data.email as string) || /[\r\n\u0000]/.test(data.subject as string))
@@ -107,40 +113,45 @@ function validate(raw: unknown) {
     ...clean,
     email,
     turnstileToken: (data.turnstileToken as string).trim(),
-    requestId: data.requestId as string,
+    requestId: typeof data.requestId === "string" ? data.requestId : undefined,
   };
 }
 export async function handleContactPost(request: Request, env: ContactEnv): Promise<Response> {
   const context = { request, env };
   if (env.CONTACT_ENABLED !== "true")
-    return response(503, { error: "The form is unavailable. Please use email instead." });
+    return response(503, { error: "The form is unavailable. Please try again later." });
   const origin = requestOrigin(context);
   if (!origin) return response(403, { error: "Request origin is not allowed." });
   const hostname = new URL(origin).hostname;
   if (
     !env.TURNSTILE_SECRET_KEY ||
-    !env.RESEND_API_KEY ||
+    (!env.RESEND_API_KEY &&
+      (!env.MAILGUN_API_KEY ||
+        !env.MAILGUN_DOMAIN ||
+        !/^[a-zA-Z0-9.-]+$/.test(env.MAILGUN_DOMAIN))) ||
     !env.CONTACT_FROM ||
     !env.CONTACT_TO ||
-    !env.CONTACT_RATE_LIMIT ||
     env.CONTACT_TURNSTILE_HOSTNAME !== hostname ||
-    !env.CONTACT_TURNSTILE_ACTION ||
-    !/^[a-zA-Z0-9_-]{1,32}$/.test(env.CONTACT_TURNSTILE_ACTION)
+    (env.CONTACT_TURNSTILE_ACTION !== undefined &&
+      !/^[a-zA-Z0-9_-]{1,32}$/.test(env.CONTACT_TURNSTILE_ACTION))
   )
-    return response(503, { error: "The form is unavailable. Please use email instead." }, origin);
+    return response(503, { error: "The form is unavailable. Please try again later." }, origin);
   const ip = request.headers.get("CF-Connecting-IP");
   if (!ip)
-    return response(503, { error: "The form is unavailable. Please use email instead." }, origin);
+    return response(503, { error: "The form is unavailable. Please try again later." }, origin);
   try {
     // Each request consumes its IP bucket once; verified CAPTCHA gates email accounting. No shared origin bucket.
     const consume = async (factor: string, value: string, limit: number) => {
-      const decision = await checkRateLimitKV(
-        env.CONTACT_RATE_LIMIT!,
+      const bucket =
         factor +
-          ":" +
-          (await generateClientKey(origin + "|" + env.CONTACT_TURNSTILE_ACTION + "|" + value)),
-        { limit, windowMs: 3600000 },
-      );
+        ":" +
+        (await generateClientKey(
+          origin + "|" + (env.CONTACT_TURNSTILE_ACTION ?? "") + "|" + value,
+        ));
+      const config = { limit, windowMs: 3600000 };
+      const decision = env.CONTACT_RATE_LIMIT
+        ? await checkRateLimitKV(env.CONTACT_RATE_LIMIT, bucket, config)
+        : checkRateLimitMemory(bucket, config);
       if (!decision.allowed)
         throw new RequestError(429, String(Math.max(1, getRetryAfterSeconds(decision.resetAt))));
     };
@@ -170,7 +181,8 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
     if (
       captcha.success !== true ||
       captcha.hostname !== hostname ||
-      captcha.action !== env.CONTACT_TURNSTILE_ACTION
+      (env.CONTACT_TURNSTILE_ACTION !== undefined &&
+        captcha.action !== env.CONTACT_TURNSTILE_ACTION)
     )
       throw new RequestError(400, "Verification failed. Please try again.");
     await consume("email", data.email, 3);
@@ -180,7 +192,7 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
         env.CONTACT_TURNSTILE_ACTION,
         env.CONTACT_FROM,
         env.CONTACT_TO,
-        data.requestId,
+        data.requestId ?? data.turnstileToken,
         data.name,
         data.email,
         data.subject,
@@ -188,24 +200,26 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
       ]),
     );
     const html = `<h2>Contact enquiry</h2><p>Name: ${escapeHtml(data.name)}</p><p>Email: ${escapeHtml(data.email)}</p><p>Subject: ${escapeHtml(data.subject!)}</p><p>${escapeHtml(data.message).replace(/\n/g, "<br>")}</p>`;
-    const sent = await fetchWithRetry("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": "contact/" + key,
-      },
-      body: JSON.stringify({
-        from: env.CONTACT_FROM,
-        to: env.CONTACT_TO,
-        reply_to: data.email,
-        subject: "Contact Form: " + data.subject,
-        html,
-      }),
-      timeout: 8000,
-      retries: 1,
-      backoffMs: 500,
-    });
+    const sent = env.RESEND_API_KEY
+      ? await fetchWithRetry("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "contact/" + key,
+          },
+          body: JSON.stringify({
+            from: env.CONTACT_FROM,
+            to: env.CONTACT_TO,
+            reply_to: data.email,
+            subject: "Contact Form: " + data.subject,
+            html,
+          }),
+          timeout: 8000,
+          retries: 1,
+          backoffMs: 500,
+        })
+      : await sendMailgun(env, data, html);
     if (!sent.ok)
       throw new RequestError(
         502,
@@ -231,12 +245,32 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
         },
         origin,
       );
-    return response(
-      502,
-      { error: "The service is unavailable. Please use email instead." },
-      origin,
-    );
+    return response(502, { error: "The service is unavailable. Please try again later." }, origin);
   }
+}
+async function sendMailgun(
+  env: ContactEnv,
+  data: { name: string; email: string; subject?: string; message: string },
+  html: string,
+) {
+  const form = new FormData();
+  form.set("from", env.CONTACT_FROM!);
+  form.set("to", env.CONTACT_TO!);
+  form.set("h:Reply-To", data.email);
+  form.set("subject", "Contact Form: " + data.subject);
+  form.set(
+    "text",
+    `Name: ${data.name}\nEmail: ${data.email}\nSubject: ${data.subject}\n\n${data.message}`,
+  );
+  form.set("html", html);
+  // Mailgun has no equivalent idempotency contract. Do not automatically retry
+  // ambiguous sends or switch providers after a configured Resend failure.
+  return fetchWithTimeout(`https://api.mailgun.net/v3/${env.MAILGUN_DOMAIN}/messages`, {
+    method: "POST",
+    headers: { Authorization: "Basic " + btoa("api:" + env.MAILGUN_API_KEY) },
+    body: form,
+    timeout: 8000,
+  });
 }
 export async function handleContactOptions(request: Request, env: ContactEnv) {
   const context = { request, env };

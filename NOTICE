@@ -1,3 +1,4 @@
 Portions adapted from the existing MIT-licensed contact implementation.
 Copyright (c) 2025 Steven Zimmerman. Permission notice is retained in LICENSE.
+Owner-authorized extracted code reuse is MIT OR Apache-2.0, recorded in Sentinel_20cde97f9bb48191b58c5f69ffa07bec18:58 and Sentinel_33b0268f69308191a134a78f2d1a712618:59. This does not relicense dependencies or the whole private application.
 The extracted core changes request-origin enforcement, hostname/action binding, rate accounting, plain-text/HTML boundaries and delivery idempotency. No private site configuration or source history is included.

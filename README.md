@@ -1,42 +1,21 @@
 # Turnstile contact core
 
-A small TypeScript core for an existing Turnstile + Resend email form. Consumers own markup, styling, domains and bindings. There is no form backend account setup, deployment or npm publication here.
-
-Version 0.1.1 is an ESM package with declarations, built by Vite+ Pack for Astro/Cloudflare Pages bundlers. The package is marked private to prevent accidental registry publication; the MIT source repository and versioned pack artifact can be consumed directly.
+Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.2 restores the personal workflow alongside strict business configuration. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
 
 ## Contract
 
-Exports: `handleContactPost(request, env)`, `handleContactOptions(request, env)`, `handleContactGet()`, plus `ContactEnv` and structural `KVStore` types. Pages adapters are a few lines; no Astro or Cloudflare type dependency is imported by the core. Both the business landing and personal publishing consumers supply their own exact same-origin domain and distinct widget action. This is not a generic provider/plugin framework.
+Exports handleContactPost, handleContactOptions, handleContactGet and structural ContactEnv/KVStore types. Required: CONTACT_ENABLED=true, exact HTTPS CONTACT_ALLOWED_ORIGINS, CONTACT_TURNSTILE_HOSTNAME matching the origin host, CONTACT_FROM, CONTACT_TO, TURNSTILE_SECRET_KEY and either RESEND_API_KEY or existing MAILGUN_API_KEY/MAILGUN_DOMAIN. The platform supplies trusted CF-Connecting-IP. Consumer adapters own existing sender/recipient aliases. No defaults, wildcard allowlist or private addresses are bundled.
 
-Required environment: `CONTACT_ENABLED=true`, `CONTACT_ALLOWED_ORIGINS` (comma-separated exact HTTPS origins, no inherited defaults or wildcard), `CONTACT_TURNSTILE_HOSTNAME` (the request host), `CONTACT_TURNSTILE_ACTION` (consumer-selected action), `CONTACT_FROM`, `CONTACT_TO`, `TURNSTILE_SECRET_KEY`, `RESEND_API_KEY`, and `CONTACT_RATE_LIMIT` (KV binding). The platform must supply trusted `CF-Connecting-IP`. Missing configuration or binding fails closed; there is no in-memory production fallback.
+CONTACT_TURNSTILE_ACTION is optional for the established action-free widget. When configured, the action must be valid and match exactly. Token success and hostname always require verification. CAPTCHA verification is never retried and times out after five seconds. Origin constraints are not authentication.
 
-POST JSON: name (100 chars), email (254), subject (200), message (5000), turnstileToken (2048), requestId (UUID v4). Bodies are streamed with a 16KiB cap. Reject missing/disallowed/mismatched Origin before vendor calls. Origin checks are request constraints, not authentication; token success, hostname and action are verified server-side. CAPTCHA validation is not automatically retried.
+POST JSON: name (100), email (254), subject (200), message (5000), turnstileToken (2048). Additive requestId, if supplied, must be UUID v4. Streamed body cap is 16 KiB. Header controls are rejected and HTML escapes user content; legitimate code stays text. No bodies, tokens, credentials or addresses are logged. Clients retain fields on failure and get a fresh token; unchanged retries retain requestId.
 
-Strict type/length/control validation and HTML-context escaping keep all user fields safe at the email boundary. Legitimate code snippets are preserved as text; arbitrary SQL/constructor keyword stripping is deliberately excluded. Email/subject header controls are rejected. No request bodies, tokens, credentials or emails are logged.
+Configured Resend is always selected, with bounded retry and a stable hashed idempotency key tied to origin/action, sender/recipient, identifier and fields. Without requestId the legacy token is the identifier; a fresh token cannot provide the same cross-request idempotency guarantee. Resend failure never switches providers. Only absent Resend selects Mailgun, preserving escaped HTML/text and reply-to. Mailgun times out after eight seconds and has no automatic retries because ambiguous sends lack an equivalent idempotency contract. Acceptance is not inbox delivery or exactly-once delivery. Errors offer no email/mailto fallback.
 
-Responses are JSON `{success:true,message}` or `{error}` with no-store headers. Success means provider acceptance, not inbox delivery. The client should retain fields and requestId on failure, get a fresh CAPTCHA token for retry, and change the identifier only when content changes or a send succeeds. Client timeout is 30s; CAPTCHA timeout 5s; email timeout 8s with one bounded retry.
+## Rate limits and qualification
 
-Provider retries use a stable hashed idempotency key bound to consumer origin/action, from/to, requestId and sanitized fields. Cross-consumer deliveries do not share a key. Resend's idempotency window is finite; this is not unlimited exactly-once delivery. Fields are not persisted by this package.
+IP counted once before parsing (5/hour); email only after valid CAPTCHA (3/hour). No site-wide bucket. Configured KV failures remain closed; eventual consistency and non-atomic increments can undercount. Without KV, the existing compatibility fallback caps isolate-local hashed buckets at 10,000, expires hourly windows, caps counters and rejects new buckets at capacity. It does not persist across isolate restart or coordinate across isolates; this is not a globally precise limiter. Hashing is not anonymity. No new namespace or permission is required.
 
-IP buckets are counted once before parsing (5/hour). Email buckets are counted once only after valid CAPTCHA (3/hour). There is no shared origin bucket: invalid requests cannot consume a site-wide allowance or unverified email capacity. KV has a one-write/second/key limit, is eventually consistent and read/modify/write is not atomic; concurrent requests sharing an IP or verified email can still fail closed or undercount. Distinct visitors have no shared write key. this is a best-effort anti-abuse layer, not a globally precise counter. Hashed identifiers are not a guarantee of anonymity. Binding/capacity policy is the consumer's deployment decision.
+npm ci, npm test and npm run test:packed build ESM/declarations, typecheck, test mocked endpoints, independently install a private tarball with scripts disabled and rerun endpoints through that package without source aliases. Coverage includes strict/action-free configurations, original fields, origin/host/action and replay failures, input/escaping, absent-KV rate limits and configured-KV failure, Resend idempotency/retries and Mailgun selection/errors/timeouts. No live CAPTCHA or email is used.
 
-## Verification and reuse
-
-`npm ci && npm test` runs Vite+ Pack and verifies its emitted ESM exports, declarations, type checks and mocked endpoint tests. Tests cover missing config, origin rejection, malformed/oversized/header-injection input, CAPTCHA replay/hostname/action failures, rate accounting/failure, contextual escaping, retry idempotency, provider errors and timeout classification. No live CAPTCHA or email is performed. Consumer browser tests should additionally check fields, accessible failure feedback, timeout and disabled preview behavior.
-
-The business consumer integrates the packed version through a thin Pages adapter and its independently styled Astro component. The personal rebuild adopts the same request/response contract with its own origin/action/configuration; no live personal-site code/configuration is modified by this export.
-
-`npm pack` produces the local versioned source artifact. No credentials, widget keys, allowlists, provider accounts or KV namespaces are provisioned by this repository.
-
-## Mechanism disposition
-
-| Mechanism | Decision | Verification |
-| --- | --- | --- |
-| Contact field, token and delivery contract | Keep | Two synthetic consumer configurations and negative endpoint tests |
-| Origin/token binding, rate counting, retries | Adapt | Exact origin/action/hostname and stable provider-key assertions |
-| Custom production bundling | Native replacement | Vite+ 1.0 `vp pack`, emitted ESM and declarations |
-| Personal form UI, account configuration, brand helpers, logs and storage fallback | Retire from this package | No runtime framework dependencies; consumer owns bindings/UI |
-
-Tests execute emitted JavaScript rather than a second production bundling workaround. The versioned archive includes emitted output so consumers need neither Vite+ nor TypeScript at runtime.
-
-0.1.1 removes the shared origin bucket and moves email accounting after token verification. Published 0.1.0 is retained unchanged; consumers should upgrade their pinned artifact.
+No deployment, registry publication, credentials, widget keys, account provisioning, private application content or personal font/photo binaries are included.
