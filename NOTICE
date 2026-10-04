@@ -1,0 +1,3 @@
+Portions adapted from the existing MIT-licensed contact implementation.
+Copyright (c) 2025 Steven Zimmerman. Permission notice is retained in LICENSE.
+The extracted core changes request-origin enforcement, hostname/action binding, rate accounting, plain-text/HTML boundaries and delivery idempotency. No private site configuration or source history is included.

@@ -1,0 +1,35 @@
+{
+  "name": "@effortlessmetrics/contact-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EffortlessMetrics/turnstile-contact.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "vp pack",
+    "test": "npm run build && tsc -p tsconfig.json && node scripts/contact-tests.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite-plus": "1.0.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
