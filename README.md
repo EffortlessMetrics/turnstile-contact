@@ -2,7 +2,7 @@
 
 A small TypeScript core for an existing Turnstile + Resend email form. Consumers own markup, styling, domains and bindings. There is no form backend account setup, deployment or npm publication here.
 
-Version 0.1.0 is an ESM package with declarations, built by Vite+ Pack for Astro/Cloudflare Pages bundlers. The package is marked private to prevent accidental registry publication; the MIT source repository and versioned pack artifact can be consumed directly.
+Version 0.1.1 is an ESM package with declarations, built by Vite+ Pack for Astro/Cloudflare Pages bundlers. The package is marked private to prevent accidental registry publication; the MIT source repository and versioned pack artifact can be consumed directly.
 
 ## Contract
 
@@ -18,7 +18,7 @@ Responses are JSON `{success:true,message}` or `{error}` with no-store headers. 
 
 Provider retries use a stable hashed idempotency key bound to consumer origin/action, from/to, requestId and sanitized fields. Cross-consumer deliveries do not share a key. Resend's idempotency window is finite; this is not unlimited exactly-once delivery. Fields are not persisted by this package.
 
-IP/origin/email buckets are counted once per relevant request phase (5/10/3 per hour). Rejected malformed/CAPTCHA requests can consume limits. KV is eventually consistent and read/modify/write is not atomic; this is a best-effort anti-abuse layer, not a globally precise counter. Hashed identifiers are not a guarantee of anonymity. Binding/capacity policy is the consumer's deployment decision.
+IP buckets are counted once before parsing (5/hour). Email buckets are counted once only after valid CAPTCHA (3/hour). There is no shared origin bucket: invalid requests cannot consume a site-wide allowance or unverified email capacity. KV has a one-write/second/key limit, is eventually consistent and read/modify/write is not atomic; concurrent requests sharing an IP or verified email can still fail closed or undercount. Distinct visitors have no shared write key. this is a best-effort anti-abuse layer, not a globally precise counter. Hashed identifiers are not a guarantee of anonymity. Binding/capacity policy is the consumer's deployment decision.
 
 ## Verification and reuse
 
@@ -38,3 +38,5 @@ The business consumer integrates the packed version through a thin Pages adapter
 | Personal form UI, account configuration, brand helpers, logs and storage fallback | Retire from this package | No runtime framework dependencies; consumer owns bindings/UI |
 
 Tests execute emitted JavaScript rather than a second production bundling workaround. The versioned archive includes emitted output so consumers need neither Vite+ nor TypeScript at runtime.
+
+0.1.1 removes the shared origin bucket and moves email accounting after token verification. Published 0.1.0 is retained unchanged; consumers should upgrade their pinned artifact.

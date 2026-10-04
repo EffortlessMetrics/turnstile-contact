@@ -132,7 +132,7 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
   if (!ip)
     return response(503, { error: "The form is unavailable. Please use email instead." }, origin);
   try {
-    // Each request consumes IP+origin once before parsing; validated email once later.
+    // Each request consumes its IP bucket once; verified CAPTCHA gates email accounting. No shared origin bucket.
     const consume = async (factor: string, value: string, limit: number) => {
       const decision = await checkRateLimitKV(
         env.CONTACT_RATE_LIMIT!,
@@ -145,9 +145,9 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
         throw new RequestError(429, String(Math.max(1, getRetryAfterSeconds(decision.resetAt))));
     };
     await consume("ip", ip, 5);
-    await consume("origin", origin, 10);
+
     const data = validate(await readBody(request));
-    await consume("email", data.email, 3);
+
     const verified = await fetchWithTimeout(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       {
@@ -173,6 +173,7 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
       captcha.action !== env.CONTACT_TURNSTILE_ACTION
     )
       throw new RequestError(400, "Verification failed. Please try again.");
+    await consume("email", data.email, 3);
     const key = await generateClientKey(
       JSON.stringify([
         origin,

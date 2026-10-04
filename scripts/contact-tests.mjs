@@ -153,15 +153,15 @@ try {
     );
     assert.equal(calls.length, 0);
   });
-  await check("single rate increment per IP/origin/email factor", async () => {
+  await check("single increment per IP and verified email; no shared origin bucket", async () => {
     const e = env();
     assert.equal((await onRequestPost({ request: request(), env: e })).status, 200);
     const counts = [...e.CONTACT_RATE_LIMIT.values.values()].map((x) => JSON.parse(x).count);
-    assert.deepEqual(counts, [1, 1, 1]);
+    assert.deepEqual(counts, [1, 1]);
     assert.equal((await onRequestPost({ request: request(), env: e })).status, 200);
     assert.deepEqual(
       [...e.CONTACT_RATE_LIMIT.values.values()].map((x) => JSON.parse(x).count),
-      [2, 2, 2],
+      [2, 2],
     );
   });
   await check("email limit returns retry after without vendor work", async () => {
@@ -172,7 +172,8 @@ try {
     const r = await onRequestPost({ request: request(), env: e });
     assert.equal(r.status, 429);
     assert.ok(Number(r.headers.get("Retry-After")) > 0);
-    assert.equal(calls.length, 0);
+    assert.equal(calls.filter((c) => c.url.includes("resend")).length, 0);
+    assert.equal(calls.filter((c) => c.url.includes("siteverify")).length, 1);
   });
   await check("KV failure and missing Cloudflare IP fail closed", async () => {
     const e = env();
@@ -238,7 +239,7 @@ try {
       );
       assert.deepEqual(
         [...e.CONTACT_RATE_LIMIT.values.values()].map((x) => JSON.parse(x).count),
-        [1, 1, 1],
+        [1, 1],
       );
       const key = sent[0].options.headers["Idempotency-Key"];
       calls = [];
@@ -288,6 +289,66 @@ try {
     });
     assert.equal((await onRequestPost({ request: r, env: e })).status, 200);
     assert.notEqual(calls.at(-1).options.headers["Idempotency-Key"], businessKey);
+  });
+  await check("invalid traffic cannot consume shared or verified-email capacity", async () => {
+    const e = env();
+    for (const ip of ["192.0.2.10", "192.0.2.11"])
+      for (let i = 0; i < 5; i++) {
+        const bad = request("{", { "CF-Connecting-IP": ip });
+        assert.equal((await onRequestPost({ request: bad, env: e })).status, 400);
+      }
+    assert.equal(e.CONTACT_RATE_LIMIT.values.size, 2);
+    assert.ok([...e.CONTACT_RATE_LIMIT.values.keys()].every((k) => k.includes(":ip:")));
+    assert.equal(calls.length, 0);
+    captcha = { success: false };
+    const bad = request(body, { "CF-Connecting-IP": "192.0.2.12" });
+    assert.equal((await onRequestPost({ request: bad, env: e })).status, 400);
+    assert.ok([...e.CONTACT_RATE_LIMIT.values.keys()].every((k) => k.includes(":ip:")));
+    captcha = { success: true, hostname: new URL(origin).hostname, action: "business-contact" };
+    assert.equal(
+      (
+        await onRequestPost({
+          request: request(body, { "CF-Connecting-IP": "192.0.2.13" }),
+          env: e,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      [...e.CONTACT_RATE_LIMIT.values.keys()].filter((k) => k.includes(":email:")).length,
+      1,
+    );
+  });
+  await check("distinct concurrent visitors avoid shared KV write contention", async () => {
+    const e = env(),
+      writing = new Set();
+    const put = e.CONTACT_RATE_LIMIT.put;
+    e.CONTACT_RATE_LIMIT.put = async (k, v) => {
+      if (writing.has(k)) throw new Error("KV one-key write contention");
+      writing.add(k);
+      await new Promise((r) => setImmediate(r));
+      try {
+        await put(k, v);
+      } finally {
+        writing.delete(k);
+      }
+    };
+    const results = await Promise.all(
+      [1, 2, 3].map((i) =>
+        onRequestPost({
+          request: request(
+            { ...body, email: "team" + i + "@example.com" },
+            { "CF-Connecting-IP": "192.0.2." + (20 + i) },
+          ),
+          env: e,
+        }),
+      ),
+    );
+    assert.deepEqual(
+      results.map((r) => r.status),
+      [200, 200, 200],
+    );
+    assert.equal(e.CONTACT_RATE_LIMIT.values.size, 6);
   });
   await check("native timeout classification, not inbox delivery", async () => {
     const mod = { onRequestPost };
