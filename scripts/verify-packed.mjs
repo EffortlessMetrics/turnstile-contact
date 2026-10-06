@@ -8,7 +8,14 @@ assert.ok(npm, "Run through npm run test:packed");
 const packed = JSON.parse(
   execFileSync(process.execPath, [npm, "pack", "--json"], { encoding: "utf8" }),
 )[0];
-for (const name of ["LICENSE-MIT", "LICENSE-APACHE", "dist/index.js", "dist/index.d.ts"])
+for (const name of [
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  "dist/index.js",
+  "dist/index.d.ts",
+  "dist/client.js",
+  "dist/client.d.ts",
+])
   assert.ok(
     packed.files.some((file) => file.path === name),
     name,
@@ -33,6 +40,24 @@ execFileSync(
   { cwd: root, stdio: "inherit" },
 );
 const module = resolve(root, "node_modules/@effortlessmetrics/contact-core/dist/index.js");
+const client = await readFile(
+  resolve(root, "node_modules/@effortlessmetrics/contact-core/dist/client.js"),
+  "utf8",
+);
+execFileSync(
+  process.execPath,
+  [
+    "--input-type=module",
+    "-e",
+    "import { mountContactForm } from '@effortlessmetrics/contact-core/client'; if (typeof mountContactForm !== 'function') throw Error('Missing client export');",
+  ],
+  { cwd: root, stdio: "inherit" },
+);
+assert.ok(
+  !/handleContactPost|MAILGUN_API_KEY|RESEND_API_KEY|TURNSTILE_SECRET_KEY/.test(client),
+  "Client entry must not carry server machinery",
+);
+await writeFile(resolve(root, "index.html"), await readFile("tests/fixtures/client.html", "utf8"));
 assert.ok(!(await readFile(module, "utf8")).includes("../src/"));
 execFileSync(process.execPath, ["scripts/contact-tests.mjs"], {
   stdio: "inherit",
@@ -46,3 +71,6 @@ console.log(
     sourceAliases: false,
   }),
 );
+execFileSync(process.execPath, ["node_modules/@playwright/test/cli.js", "test"], {
+  stdio: "inherit",
+});

@@ -1,6 +1,14 @@
 # Turnstile contact core
 
-Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.3 restores the personal workflow alongside strict business configuration. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
+Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.4 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
+
+## Shared client integration
+
+Import `mountContactForm` from `@effortlessmetrics/contact-core/client`, never the server root into a browser bundle. The client entry has no server imports, private bindings or framework dependency. Supply the native `form`, challenge container, verification status, delivery status, submit button and an initially hidden accepted indicator, plus the existing public `sitekey` and optional `action`. Optional `endpoint` defaults to `/api/contact`; `draftKey` defaults to the existing `contact-form-draft`. Native fields are named `name`, `email`, `subject`, `message`; labels, limits, button text and site styles stay with the consumer. The returned disposer removes listeners/widget and cancels in-flight requests. Repeated mounting of the same form is idempotent.
+
+The client separately updates verification and delivery status. Only HTTP success **and** JSON `success: true` mark acceptance. The consumer's small green check is revealed through `acceptedIndicator.hidden = false`; its aria-hidden visual is accompanied by the polite, atomic delivery-status announcement `Message sent.`. Server thank-you text is not rendered. The client sets `data-contact-state` to `idle`, `sending`, `accepted` or `error` on the form and delivery status. Style only the accepted status as visually hidden (standard sr-only styling), keeping sending/error text visible; do not give the delivery element an unconditional hidden class. Keep the native submit button's label unchanged and style the indicator with the site's green success color. Verification alone never displays delivery acceptance or sends.
+
+An accepted request clears its unchanged draft and rotates identity. New input clears the accepted indicator; unchanged failed retries retain identity and obtain a fresh token. Later failure cannot retain a previous green check. Editing while a request is pending preserves the new draft and does not show acceptance for that edited content. Offline/reconnect, compact challenge sizing, expiry and errors do not submit automatically or overwrite delivery errors. Timeout text preserves the existing ambiguity/possible-duplicate warning. All qualification uses synthetic tokens and intercepted requests, with no live CAPTCHA or email.
 
 ## Contract
 

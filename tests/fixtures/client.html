@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><style>
+[hidden]{display:none}.accepted{color:#15803d}label{display:block}#delivery[data-contact-state="accepted"]{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+</style><form id="contact"><label>Name<input name="name" required maxlength="100"></label><label>Email<input name="email" type="email" required maxlength="254"></label><label>Subject<input name="subject" required maxlength="200"></label><label>Message<textarea name="message" required maxlength="5000"></textarea></label><div id="challenge"></div><p id="verification"></p><button type="submit">Send message <span id="accepted" class="accepted" hidden>✓</span></button><p id="delivery"></p></form>
+<script type="module">
+import {mountContactForm} from './node_modules/@effortlessmetrics/contact-core/dist/client.js';
+let n=0;window.turnstile={render:(element,options)=>{window.widgetOptions=options;element.style.width=options.size==='compact'?'150px':'300px';window.refreshToken=()=>options.callback('synthetic-token-'+(++n));window.refreshToken();return 'widget'},reset:()=>window.refreshToken(),remove:()=>{}};
+const options={form:document.querySelector('#contact'),challenge:document.querySelector('#challenge'),verificationStatus:document.querySelector('#verification'),deliveryStatus:document.querySelector('#delivery'),submitButton:document.querySelector('button'),acceptedIndicator:document.querySelector('#accepted'),sitekey:'synthetic-test-sitekey'};
+window.dispose=mountContactForm(options);window.mountAgain=()=>mountContactForm(options);
+</script>
