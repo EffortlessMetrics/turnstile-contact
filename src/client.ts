@@ -178,7 +178,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       const timeout = setTimeout(() => controller.abort(), 30_000);
       sending = true;
       submitButton.disabled = true;
-      setDelivery("sending", "Sending…");
+      setDelivery("sending", "Sending\u2026");
       try {
         const response = await fetch(options.endpoint ?? "/api/contact", {
           method: "POST",
