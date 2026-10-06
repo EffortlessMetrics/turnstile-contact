@@ -1,6 +1,6 @@
 # Turnstile contact core
 
-Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.7 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
+ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.7 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
 
 ## Shared client integration
 
@@ -51,12 +51,16 @@ independent NodeNext and Bundler consumers, then runs mocked endpoint and browse
 cases. Source files are intentionally shipped for inspection; scripts, tests,
 qualification records, lockfiles and credentials are excluded.
 
-This remains a private package (`private: true`); no registry release is authorized.
-A future release needs a separately approved registry destination/access policy,
-version and public metadata review. Release from a clean checkout with `npm ci`,
+Version 0.1.8 is a public-release candidate; metadata targets the public npm
+registry with public access. No registry publication has occurred or is authorized.
+Confirm scope ownership/access and approve the release before publishing. Release from a clean checkout with `npm ci`,
 `npm test`, `npm run test:packed`, then review `npm pack --dry-run --json`, the exact
 archive integrity and complete license notices. Do not publish from qualification
-consumer directories. Build before packing; packing alone does not rebuild `dist`.
+consumer directories. The `prepack` hook rebuilds `dist` before every normal pack; do not bypass scripts
+when producing a release archive. Independent consumers install with scripts disabled.
+Run `npm run test:rollback` after packed qualification for an isolated 0.1.7 ->
+candidate -> 0.1.7 endpoint/browser receipt. Keep candidate archives in their unique
+qualification directories; never overwrite an earlier archive.
 
 Before upgrading a consumer, retain its previous archive and lockfile, install the
 candidate with scripts disabled, and run that consumer's local endpoint/browser

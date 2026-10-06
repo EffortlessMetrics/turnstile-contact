@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
-const root = resolve(".qualification/packed-consumer");
+const root = resolve(process.env.CONTACT_CONSUMER_ROOT ?? ".qualification/packed-consumer");
 createServer(async (req, res) => {
   const file = resolve(
     root,

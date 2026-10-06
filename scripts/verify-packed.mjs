@@ -5,17 +5,21 @@ import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 const npm = process.env.npm_execpath;
 assert.ok(npm, "Run through npm run test:packed");
-const packDestination = resolve(".qualification/candidate");
+const candidateId = new Date().toISOString().replace(/[:.]/g, "-");
+const packDestination = resolve(".qualification/candidate", candidateId);
 await mkdir(packDestination, { recursive: true });
-const packed = JSON.parse(
-  execFileSync(process.execPath, [npm, "pack", "--json", "--pack-destination", packDestination], {
-    encoding: "utf8",
-  }),
-)[0];
+const packedOutput = execFileSync(
+  process.execPath,
+  [npm, "pack", "--json", "--pack-destination", packDestination],
+  { encoding: "utf8" },
+);
+// npm lifecycle commands may print build output before the final JSON array.
+const packed = JSON.parse(packedOutput.slice(packedOutput.lastIndexOf("\n[") + 1))[0];
 for (const name of [
   "LICENSE",
   "NOTICE",
   "README.md",
+  "CHANGELOG.md",
   "LICENSE-MIT",
   "LICENSE-APACHE",
   "dist/index.js",
@@ -30,6 +34,7 @@ for (const name of [
 const allowedRootFiles = new Set([
   "package.json",
   "README.md",
+  "CHANGELOG.md",
   "LICENSE",
   "LICENSE-MIT",
   "LICENSE-APACHE",
@@ -46,7 +51,7 @@ for (const file of packed.files) {
     `Private provenance or machine path in ${file.path}`,
   );
 }
-const root = resolve(".qualification/packed-consumer");
+const root = resolve(".qualification/packed-consumer", candidateId);
 await mkdir(root, { recursive: true });
 await writeFile(
   resolve(root, "package.json"),
@@ -135,4 +140,19 @@ console.log(
 );
 execFileSync(process.execPath, ["node_modules/@playwright/test/cli.js", "test"], {
   stdio: "inherit",
+  env: { ...process.env, CONTACT_CONSUMER_ROOT: root },
 });
+
+await writeFile(
+  resolve(".qualification/latest-candidate.json"),
+  JSON.stringify(
+    {
+      ...packed,
+      archive: resolve(packDestination, packed.filename),
+      consumerRoot: root,
+      node: process.version,
+    },
+    null,
+    2,
+  ) + "\n",
+);

@@ -1,7 +1,7 @@
 {
   "name": "@effortlessmetrics/contact-core",
-  "version": "0.1.7",
-  "private": true,
+  "version": "0.1.8",
+  "private": false,
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
@@ -14,7 +14,8 @@
     "LICENSE",
     "LICENSE-MIT",
     "LICENSE-APACHE",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "exports": {
@@ -30,7 +31,9 @@
   "scripts": {
     "build": "vp pack",
     "test": "npm run build && tsc -p tsconfig.json && node scripts/contact-tests.mjs && node scripts/memory-limit-tests.mjs",
-    "test:packed": "node scripts/verify-packed.mjs"
+    "test:packed": "node scripts/verify-packed.mjs",
+    "prepack": "npm run build",
+    "test:rollback": "node scripts/verify-rollback.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -39,5 +42,20 @@
   },
   "engines": {
     "node": ">=22.18.0"
+  },
+  "description": "Framework-independent Turnstile contact endpoint and native browser form client",
+  "keywords": [
+    "turnstile",
+    "contact-form",
+    "cloudflare",
+    "typescript"
+  ],
+  "homepage": "https://github.com/EffortlessMetrics/turnstile-contact#readme",
+  "bugs": {
+    "url": "https://github.com/EffortlessMetrics/turnstile-contact/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
