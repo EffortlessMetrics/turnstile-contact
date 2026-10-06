@@ -162,3 +162,49 @@ test("accepted event contains only semantic status and preserves green indicator
     code: "delivery-accepted",
   });
 });
+
+test("response-body transport failure retains network semantics after headers", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(() => {
+    window.fetch = async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new TypeError("Localized interrupted body");
+        },
+      }) as unknown as Response;
+  });
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("#delivery")).toHaveText("Custom network");
+  await expect(page.locator("#accepted")).toBeHidden();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue("Private synthetic body");
+  expect((await page.evaluate(() => (window as any).deliveryEvents)).at(-1)).toEqual({
+    state: "error",
+    code: "delivery-network-error",
+  });
+});
+test("delivery event reaches external shadow host listener with no form data", async ({ page }) => {
+  await page.route("**/api/contact", (r) => r.fulfill({ json: { success: true } }));
+  await setup(page);
+  await page.evaluate(() => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    host.attachShadow({ mode: "open" }).append(document.querySelector("#contact")!);
+    (window as any).hostEvents = [];
+    document.addEventListener("contact:delivery-state", (event) =>
+      (window as any).hostEvents.push((event as CustomEvent).detail),
+    );
+  });
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("#accepted")).toBeVisible();
+  const events = await page.evaluate(() => (window as any).hostEvents);
+  expect(events.at(-1)).toEqual({ state: "accepted", code: "delivery-accepted" });
+  expect(
+    events.every((event: any) =>
+      Object.keys(event).every((key) => key === "state" || key === "code"),
+    ),
+  ).toBe(true);
+});

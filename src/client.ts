@@ -109,6 +109,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
     deliveryStatus.dispatchEvent(
       new CustomEvent<ContactDeliveryState>("contact:delivery-state", {
         bubbles: true,
+        composed: true,
         detail: { state, ...(code ? { code } : {}) },
       }),
     );
@@ -285,6 +286,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
         failureCode = response.status === 504 ? "delivery-server-timeout" : "delivery-rejected";
         const result: unknown = await response.json().catch((error: unknown) => {
           if (error instanceof DOMException && error.name === "AbortError") throw error;
+          if (error instanceof TypeError) failureCode = "delivery-network-error";
           return null;
         });
         if (

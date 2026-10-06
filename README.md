@@ -78,7 +78,7 @@ endpoints omit machine codes, the producer also recognizes known legacy form/ser
 unavailability messages for optional overrides; consumers do not compare English text.
 
 For example, pass `messages: { "delivery-network-error": "Please reconnect and retry." }`
-to the mount options. The delivery-status element also emits bubbling
+to the mount options. The delivery-status element also emits bubbling, composed
 `contact:delivery-state` events with exported `ContactDeliveryState` detail containing
 only `state` and optional `code`. Consumers can focus their error status through this
 event instead of observing or comparing English text. No form values, identifiers,
@@ -132,8 +132,8 @@ context Web Crypto and AbortController. It is not an SSR renderer.
 
 Packed qualification checks the file allowlist and public provenance, imports the
 client without a DOM in Node, resolves both public entries and their types through
-independent NodeNext and Bundler consumers, then runs mocked endpoint and browser
-cases. Source files are intentionally shipped for inspection; scripts, tests,
+independent NodeNext and Bundler consumers, type-checks the README examples, and
+runs semantic error contracts plus mocked endpoint and browser cases. Source files are intentionally shipped for inspection; scripts, tests,
 qualification records, lockfiles and credentials are excluded.
 
 Version 0.1.8 is published on the public npm registry. Its qualified source is
