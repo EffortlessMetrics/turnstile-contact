@@ -61,10 +61,12 @@ The example keeps drafts only in the open form. Omit `persistDraft: false` to us
 the documented local draft persistence policy. Route `/api/contact` to the server
 adapter; labels, statuses, accepted-state styling and hosting remain consumer-owned.
 
-## Semantic presentation API (unreleased source candidate)
+## Semantic presentation API (unpublished 0.1.9 candidate)
 
 The maintained source adds optional `messages` keyed by exported `ContactMessageCode`.
-Published 0.1.8 does not yet include this API. Omit overrides to retain every default
+Published 0.1.8 does not include this API. The prepared 0.1.9 archive is unpublished.
+Install that candidate archive with scripts disabled to use the API; it is not
+available from the registry. Omit overrides to retain every default
 message. Keys are `verification-ready`, `verification-expired`, `verification-failed`,
 `verification-offline`, `verification-reconnected`, `verification-load-failed`,
 `delivery-sending`, `delivery-accepted`, `delivery-client-timeout`,
@@ -136,10 +138,12 @@ independent NodeNext and Bundler consumers, type-checks the README examples, and
 runs semantic error contracts plus mocked endpoint and browser cases. Source files are intentionally shipped for inspection; scripts, tests,
 qualification records, lockfiles and credentials are excluded.
 
-Version 0.1.8 is published on the public npm registry. Its qualified source is
+Version 0.1.8 is published on the public npm registry. The maintained source and
+prepared candidate are version 0.1.9, which remains unpublished. Its qualified source is
 commit `0e12af21b2d3624c3d2f63d3c6172948b34e6ef2`; the immutable archive SHA256 is
 `48d2d910c4e70d0459c9d398aa990d4a5e3beca26581059f3e0ca0fd3d32dd03`.
-Later documentation-only source changes do not replace those published bytes.
+Candidate 0.1.9 adds the documented semantic presentation API and current examples;
+its source/archive changes do not replace published 0.1.8 bytes.
 A future registry release needs its own version and approval. Prepare it from a
 clean checkout with `npm ci`,
 `npm test`, `npm run test:packed`, then review `npm pack --dry-run --json`, the exact
@@ -147,7 +151,7 @@ archive integrity and complete license notices. Do not publish from qualificatio
 consumer directories. The `prepack` hook rebuilds `dist` before every normal pack; do not bypass scripts
 when producing a release archive. Independent consumers install with scripts disabled.
 Run `npm run test:rollback` after packed qualification for an isolated published 0.1.8 ->
-source candidate -> published 0.1.8 endpoint/browser receipt. The check downloads
+candidate 0.1.9 -> published 0.1.8 endpoint/browser receipt. The check downloads
 only the public package archive and verifies its recorded integrity; it calls no
 real verification or email provider. Set `CONTACT_PREVIOUS_ARCHIVE` to an existing
 archive to qualify an older baseline. The same rollback check runs in producer CI. Keep candidate archives in their unique
