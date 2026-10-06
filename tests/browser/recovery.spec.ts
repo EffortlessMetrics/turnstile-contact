@@ -1,4 +1,43 @@
 import { test, expect, type Page } from "@playwright/test";
+test("HTML platform errors show the visible retry message rather than JSON parser details", async ({
+  page,
+}) => {
+  await page.route("**/api/contact", (r) =>
+    r.fulfill({ status: 502, contentType: "text/html", body: "<h1>Bad gateway</h1>" }),
+  );
+  await page.goto("/");
+  await fields(page);
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator("#delivery")).toHaveText(
+    "Your message could not be sent. Please retry.",
+  );
+  await expect(page.locator("#delivery")).toBeVisible();
+  await expect(page.locator("#accepted")).toBeHidden();
+});
+test("timeout while reading response JSON retains the ambiguous-delivery warning", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto("/");
+  await fields(page);
+  await page.evaluate(() => {
+    window.fetch = async (_input, init) =>
+      ({
+        ok: true,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            init!.signal!.addEventListener("abort", () =>
+              reject(new DOMException("Aborted body", "AbortError")),
+            );
+          }),
+      }) as Response;
+  });
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.clock.fastForward(30001);
+  await expect(page.locator("#delivery")).toContainText("may have been accepted");
+  await expect(page.locator("#delivery")).toContainText("may deliver a duplicate");
+  await expect(page.locator("#accepted")).toBeHidden();
+});
 const mockProvider = `window.turnstile={render:(element,options)=>{window.widgetOptions=options;window.refreshToken=()=>options.callback('mock-fresh-token');window.refreshToken();return 'remote-widget'},reset:()=>window.refreshToken(),remove:()=>{}};`;
 async function fields(page: Page) {
   await page.getByLabel("Name", { exact: true }).fill("Synthetic sender");

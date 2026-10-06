@@ -139,10 +139,8 @@ export function mountContactForm(options: ContactFormOptions): () => void {
         if (!navigator.onLine) return;
         token = value;
         retryVisible(false);
-        submitButton.disabled = sending || !navigator.onLine || !token;
-        verificationStatus.textContent = navigator.onLine
-          ? "Verification ready."
-          : "You are offline. Your draft is kept here; reconnect to verify and send.";
+        submitButton.disabled = sending || !token;
+        verificationStatus.textContent = "Verification ready.";
       },
       "expired-callback": () => {
         if (disposed || generation !== widgetGeneration) return;
@@ -235,7 +233,10 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           signal: controller.signal,
           body: JSON.stringify(payload),
         });
-        const result: unknown = await response.json();
+        const result: unknown = await response.json().catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") throw error;
+          return null;
+        });
         if (
           !response.ok ||
           !result ||
