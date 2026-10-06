@@ -119,7 +119,10 @@ function validate(raw: unknown) {
 export async function handleContactPost(request: Request, env: ContactEnv): Promise<Response> {
   const context = { request, env };
   if (env.CONTACT_ENABLED !== "true")
-    return response(503, { error: "The form is unavailable. Please try again later." });
+    return response(503, {
+      error: "The form is unavailable. Please try again later.",
+      code: "form-unavailable",
+    });
   const origin = requestOrigin(context);
   if (!origin) return response(403, { error: "Request origin is not allowed." });
   const hostname = new URL(origin).hostname;
@@ -135,10 +138,18 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
     (env.CONTACT_TURNSTILE_ACTION !== undefined &&
       !/^[a-zA-Z0-9_-]{1,32}$/.test(env.CONTACT_TURNSTILE_ACTION))
   )
-    return response(503, { error: "The form is unavailable. Please try again later." }, origin);
+    return response(
+      503,
+      { error: "The form is unavailable. Please try again later.", code: "form-unavailable" },
+      origin,
+    );
   const ip = request.headers.get("CF-Connecting-IP");
   if (!ip)
-    return response(503, { error: "The form is unavailable. Please try again later." }, origin);
+    return response(
+      503,
+      { error: "The form is unavailable. Please try again later.", code: "form-unavailable" },
+      origin,
+    );
   let deliveryStarted = false;
   let stableDeliveryIdentifier = false;
   try {
@@ -252,7 +263,11 @@ export async function handleContactPost(request: Request, env: ContactEnv): Prom
         },
         origin,
       );
-    return response(502, { error: "The service is unavailable. Please try again later." }, origin);
+    return response(
+      502,
+      { error: "The service is unavailable. Please try again later.", code: "service-unavailable" },
+      origin,
+    );
   }
 }
 async function sendMailgun(

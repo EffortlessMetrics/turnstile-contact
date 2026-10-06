@@ -7,11 +7,34 @@ import assert from "node:assert/strict";
 const npm = process.env.npm_execpath;
 assert.ok(npm, "Run via npm run test:rollback");
 const candidate = JSON.parse(await readFile(".qualification/latest-candidate.json", "utf8"));
-const oldArchive = resolve(
-  process.env.CONTACT_PREVIOUS_ARCHIVE ?? "effortlessmetrics-contact-core-0.1.7.tgz",
-);
 const root = resolve(".qualification/rollback", new Date().toISOString().replace(/[:.]/g, "-"));
 await mkdir(root, { recursive: true });
+let oldArchive;
+if (process.env.CONTACT_PREVIOUS_ARCHIVE)
+  oldArchive = resolve(process.env.CONTACT_PREVIOUS_ARCHIVE);
+else {
+  const output = execFileSync(
+    process.execPath,
+    [
+      npm,
+      "pack",
+      "@effortlessmetrics/contact-core@0.1.8",
+      "--ignore-scripts",
+      "--json",
+      "--registry=https://registry.npmjs.org/",
+      "--pack-destination",
+      root,
+    ],
+    { encoding: "utf8" },
+  );
+  const previous = JSON.parse(output)[0];
+  assert.equal(
+    previous.integrity,
+    "sha512-zMpAzhhJ9K2+MZVcIrhF4Yn4dspBtlpT6n0x2lNoGotARvmKtZaZN03qAYeSLmV3UP5gJ7MFcn+8T1LhzfHGdw==",
+    "Published baseline must retain qualified immutable bytes",
+  );
+  oldArchive = resolve(root, previous.filename);
+}
 await writeFile(
   resolve(root, "package.json"),
   JSON.stringify({ private: true, type: "module" }) + "\n",
@@ -43,11 +66,17 @@ for (const [stage, archive] of [
   const env = {
     ...process.env,
     CONTACT_CONSUMER_ROOT: root,
+    CONTACT_EXPECT_MESSAGE_API: stage === "candidate" ? "true" : "false",
     CONTACT_PACKED_MODULE: pathToFileURL(
       resolve(root, "node_modules/@effortlessmetrics/contact-core/dist/index.js"),
     ).href,
   };
   execFileSync(process.execPath, ["scripts/contact-tests.mjs"], { env, stdio: "inherit" });
+  if (stage === "candidate")
+    execFileSync(process.execPath, ["scripts/message-contract-tests.mjs"], {
+      env,
+      stdio: "inherit",
+    });
   execFileSync(process.execPath, ["node_modules/@playwright/test/cli.js", "test"], {
     env,
     stdio: "inherit",
@@ -60,12 +89,16 @@ for (const [stage, archive] of [
       .update(await readFile(archive))
       .digest("hex"),
     endpointCases: 20,
-    browserCases: 15,
+    browserCases: stage === "candidate" ? 30 : 15,
   });
 }
 assert.equal(receipts[0].sha512, receipts[2].sha512);
 assert.equal(receipts[0].version, receipts[2].version);
-assert.notEqual(receipts[0].version, receipts[1].version);
+assert.notEqual(
+  receipts[0].sha512,
+  receipts[1].sha512,
+  "Candidate must be distinguishable from published baseline",
+);
 await writeFile(
   resolve(".qualification/rollback-receipt.json"),
   JSON.stringify({ node: process.version, receipts }, null, 2) + "\n",

@@ -15,6 +15,26 @@ export interface TurnstileClient {
   remove(id: string): void;
 }
 
+export type ContactMessageCode =
+  | "verification-ready"
+  | "verification-expired"
+  | "verification-failed"
+  | "verification-offline"
+  | "verification-reconnected"
+  | "verification-load-failed"
+  | "delivery-sending"
+  | "delivery-accepted"
+  | "delivery-client-timeout"
+  | "delivery-network-error"
+  | "delivery-server-timeout"
+  | "delivery-rejected"
+  | "delivery-form-unavailable"
+  | "delivery-service-unavailable";
+export interface ContactDeliveryState {
+  state: "idle" | "sending" | "accepted" | "error";
+  code?: ContactMessageCode;
+}
+
 export interface ContactFormOptions {
   form: HTMLFormElement;
   challenge: HTMLElement;
@@ -23,6 +43,8 @@ export interface ContactFormOptions {
   submitButton: HTMLButtonElement;
   acceptedIndicator: HTMLElement;
   sitekey: string;
+  /** Optional consumer presentation strings keyed by stable lifecycle codes. */
+  messages?: Partial<Record<ContactMessageCode, string>>;
   action?: string;
   endpoint?: string;
   /** Preserve each site's existing visitor-authored local draft key. */
@@ -70,11 +92,27 @@ export function mountContactForm(options: ContactFormOptions): () => void {
   const events = new AbortController();
   const listener = { signal: events.signal };
   const compact = matchMedia("(max-width: 360px)");
-  const setDelivery = (state: "idle" | "sending" | "accepted" | "error", text: string) => {
+  const message = (code: ContactMessageCode, fallback: string) =>
+    options.messages?.[code] ?? fallback;
+  const setVerification = (code: ContactMessageCode, fallback: string) => {
+    verificationStatus.textContent = message(code, fallback);
+  };
+  const setDelivery = (
+    state: ContactDeliveryState["state"],
+    text: string,
+    code?: ContactMessageCode,
+  ) => {
     deliveryStatus.dataset.contactState = state;
-    deliveryStatus.textContent = text;
+    deliveryStatus.textContent = code ? message(code, text) : text;
     acceptedIndicator.hidden = state !== "accepted";
     form.dataset.contactState = state;
+    deliveryStatus.dispatchEvent(
+      new CustomEvent<ContactDeliveryState>("contact:delivery-state", {
+        bubbles: true,
+        composed: true,
+        detail: { state, ...(code ? { code } : {}) },
+      }),
+    );
   };
   deliveryStatus.setAttribute("role", "status");
   deliveryStatus.setAttribute("aria-live", "polite");
@@ -140,19 +178,19 @@ export function mountContactForm(options: ContactFormOptions): () => void {
         token = value;
         retryVisible(false);
         submitButton.disabled = sending || !token;
-        verificationStatus.textContent = "Verification ready.";
+        setVerification("verification-ready", "Verification ready.");
       },
       "expired-callback": () => {
         if (disposed || generation !== widgetGeneration) return;
         expire();
         retryVisible(navigator.onLine);
-        verificationStatus.textContent = "Verification expired. Please verify again.";
+        setVerification("verification-expired", "Verification expired. Please verify again.");
       },
       "error-callback": () => {
         if (disposed || generation !== widgetGeneration) return;
         expire();
         retryVisible(navigator.onLine);
-        verificationStatus.textContent = "Verification failed. Please verify again.";
+        setVerification("verification-failed", "Verification failed. Please verify again.");
       },
     });
   };
@@ -161,8 +199,10 @@ export function mountContactForm(options: ContactFormOptions): () => void {
     expire();
     retryVisible(false);
     if (!navigator.onLine) {
-      verificationStatus.textContent =
-        "You are offline. Your draft is kept here; reconnect to verify and send.";
+      setVerification(
+        "verification-offline",
+        "You are offline. Your draft is kept here; reconnect to verify and send.",
+      );
       return;
     }
     if (provider()) {
@@ -179,7 +219,10 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       cancelLoader();
       expire();
       retryVisible(navigator.onLine);
-      verificationStatus.textContent = "Verification could not load. Please retry verification.";
+      setVerification(
+        "verification-load-failed",
+        "Verification could not load. Please retry verification.",
+      );
     };
     attempt.onload = () => {
       if (disposed || loader !== attempt) return;
@@ -199,8 +242,10 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       expire();
       cancelLoader();
       retryVisible(false);
-      verificationStatus.textContent =
-        "You are offline. Your draft is kept here; reconnect to verify and send.";
+      setVerification(
+        "verification-offline",
+        "You are offline. Your draft is kept here; reconnect to verify and send.",
+      );
     },
     listener,
   );
@@ -209,7 +254,10 @@ export function mountContactForm(options: ContactFormOptions): () => void {
     () => {
       widgetGeneration++;
       expire();
-      verificationStatus.textContent = "Reconnected. Please verify again before sending.";
+      setVerification(
+        "verification-reconnected",
+        "Reconnected. Please verify again before sending.",
+      );
       startVerification();
     },
     listener,
@@ -226,7 +274,8 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       const timeout = setTimeout(() => controller.abort(), 30_000);
       sending = true;
       submitButton.disabled = true;
-      setDelivery("sending", "Sending\u2026");
+      setDelivery("sending", "Sending\u2026", "delivery-sending");
+      let failureCode: ContactMessageCode = "delivery-network-error";
       try {
         const response = await fetch(options.endpoint ?? "/api/contact", {
           method: "POST",
@@ -234,8 +283,10 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           signal: controller.signal,
           body: JSON.stringify(payload),
         });
+        failureCode = response.status === 504 ? "delivery-server-timeout" : "delivery-rejected";
         const result: unknown = await response.json().catch((error: unknown) => {
           if (error instanceof DOMException && error.name === "AbortError") throw error;
+          if (error instanceof TypeError) failureCode = "delivery-network-error";
           return null;
         });
         if (
@@ -245,6 +296,23 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           !("success" in result) ||
           result.success !== true
         ) {
+          if (result && typeof result === "object" && "code" in result) {
+            if (result.code === "form-unavailable") failureCode = "delivery-form-unavailable";
+            if (result.code === "service-unavailable") failureCode = "delivery-service-unavailable";
+          } else if (result && typeof result === "object" && "error" in result) {
+            // Compatibility with legacy endpoints before machine-readable codes.
+            // Keep these translations in the producer, not consumer DOM observers.
+            if (
+              result.error === "The form is unavailable. Please use email instead." ||
+              result.error === "The form is unavailable. Please try again later."
+            )
+              failureCode = "delivery-form-unavailable";
+            if (
+              result.error === "The service is unavailable. Please use email instead." ||
+              result.error === "The service is unavailable. Please try again later."
+            )
+              failureCode = "delivery-service-unavailable";
+          }
           const message =
             result &&
             typeof result === "object" &&
@@ -256,7 +324,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           throw new Error(message);
         }
         if (disposed) return;
-        setDelivery("accepted", "Message sent.");
+        setDelivery("accepted", "Message sent.", "delivery-accepted");
         if (identity === requestId) {
           form.reset();
           requestId = crypto.randomUUID();
@@ -275,6 +343,9 @@ export function mountContactForm(options: ContactFormOptions): () => void {
             : error instanceof Error
               ? error.message
               : "Your message could not be sent. Please retry.",
+          error instanceof DOMException && error.name === "AbortError"
+            ? "delivery-client-timeout"
+            : failureCode,
         );
       } finally {
         clearTimeout(timeout);

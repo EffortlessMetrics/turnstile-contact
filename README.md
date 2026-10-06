@@ -2,6 +2,91 @@
 
 ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.7 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
 
+## Install and native adapters
+
+```sh
+npm install @effortlessmetrics/contact-core@0.1.8
+```
+
+A Fetch-compatible adapter passes its private bindings without bundling them in
+browser code. Contact stays disabled unless `CONTACT_ENABLED` is exactly `true`.
+The host must supply the trusted platform IP header; keep server bindings private.
+
+```ts
+import {
+  handleContactPost,
+  handleContactOptions,
+  handleContactGet,
+  type ContactEnv,
+} from "@effortlessmetrics/contact-core";
+
+type ContactContext = { request: Request; env: ContactEnv };
+export const onRequestPost = ({ request, env }: ContactContext) =>
+  handleContactPost(request, env);
+export const onRequestOptions = ({ request, env }: ContactContext) =>
+  handleContactOptions(request, env);
+export const onRequestGet = () => handleContactGet();
+```
+
+Mount the client after native form markup exists. This example uses the indicated
+`data-*` attributes inside a form with labelled `name`, `email`, `subject` and
+`message` fields and their documented native length limits. The accepted indicator
+and retry button start hidden. Supply only the public Turnstile site key here;
+the returned function belongs in the consumer's navigation/unmount lifecycle.
+
+```ts
+import { mountContactForm } from "@effortlessmetrics/contact-core/client";
+
+export function mountExample(form: HTMLFormElement, publicSiteKey: string) {
+  const required = <T extends HTMLElement>(selector: string): T => {
+    const element = form.querySelector<T>(selector);
+    if (!element) throw new Error(`Missing contact element: ${selector}`);
+    return element;
+  };
+  return mountContactForm({
+    form,
+    sitekey: publicSiteKey,
+    challenge: required<HTMLElement>("[data-challenge]"),
+    verificationStatus: required<HTMLElement>("[data-verification-status]"),
+    deliveryStatus: required<HTMLElement>("[data-delivery-status]"),
+    submitButton: required<HTMLButtonElement>("button[type=submit]"),
+    acceptedIndicator: required<HTMLElement>("[data-accepted]"),
+    retryVerificationButton: required<HTMLButtonElement>("[data-retry-verification]"),
+    persistDraft: false,
+  });
+}
+```
+
+The example keeps drafts only in the open form. Omit `persistDraft: false` to use
+the documented local draft persistence policy. Route `/api/contact` to the server
+adapter; labels, statuses, accepted-state styling and hosting remain consumer-owned.
+
+## Semantic presentation API (unreleased source candidate)
+
+The maintained source adds optional `messages` keyed by exported `ContactMessageCode`.
+Published 0.1.8 does not yet include this API. Omit overrides to retain every default
+message. Keys are `verification-ready`, `verification-expired`, `verification-failed`,
+`verification-offline`, `verification-reconnected`, `verification-load-failed`,
+`delivery-sending`, `delivery-accepted`, `delivery-client-timeout`,
+`delivery-network-error`, `delivery-server-timeout`, `delivery-rejected`,
+`delivery-form-unavailable` and `delivery-service-unavailable`. Server rejection text
+is preserved unless its corresponding override is supplied. A 504 response selects
+`delivery-server-timeout` without assuming which provider timed out. POST availability
+responses carry additive JSON `code: "form-unavailable"` or `"service-unavailable"`;
+existing text, status and disabled/configuration behavior are unchanged. When old
+endpoints omit machine codes, the producer also recognizes known legacy form/service
+unavailability messages for optional overrides; consumers do not compare English text.
+
+For example, pass `messages: { "delivery-network-error": "Please reconnect and retry." }`
+to the mount options. The delivery-status element also emits bubbling, composed
+`contact:delivery-state` events with exported `ContactDeliveryState` detail containing
+only `state` and optional `code`. Consumers can focus their error status through this
+event instead of observing or comparing English text. No form values, identifiers,
+tokens or private bindings are included. An accepted event describes the submitted
+request; later edits retain their draft and hide the indicator. These options affect
+presentation only;
+acceptance, draft persistence, verification and delivery identity are unchanged.
+
 ## Shared client integration
 
 Version 0.1.7 defers provider loading while initially offline and starts fresh verification after reconnect, without sending. Supply an initially hidden native `retryVerificationButton` labelled by the consumer (for example, Retry verification). Load failure, expiry and challenge failure expose this control; clicking retries verification in place without reload and preserves fields and delivery identity. It never submits the form.
@@ -28,9 +113,9 @@ Configured Resend is always selected, with bounded retry and a stable hashed ide
 
 IP counted once before parsing (5/hour); email only after valid CAPTCHA (3/hour). No site-wide bucket. Configured KV failures remain closed; eventual consistency and non-atomic increments can undercount. Without KV, the existing compatibility fallback caps isolate-local hashed buckets at 10,000, expires hourly windows, caps counters and rejects new buckets at capacity. It does not persist across isolate restart or coordinate across isolates; this is not a globally precise limiter. Hashing is not anonymity. No new namespace or permission is required.
 
-npm ci, npm test and npm run test:packed build ESM/declarations, typecheck, test mocked endpoints, independently install a private tarball with scripts disabled and rerun endpoints through that package without source aliases. Coverage includes strict/action-free configurations, original fields, origin/host/action and replay failures, input/escaping, absent-KV rate limits and configured-KV failure, Resend idempotency/retries and Mailgun selection/errors/timeouts. No live CAPTCHA or email is used.
+npm ci, npm test and npm run test:packed build ESM/declarations, typecheck, test mocked endpoints, independently install a local tarball with scripts disabled and rerun endpoints through that package without source aliases. Coverage includes strict/action-free configurations, original fields, origin/host/action and replay failures, input/escaping, absent-KV rate limits and configured-KV failure, Resend idempotency/retries and Mailgun selection/errors/timeouts. No live CAPTCHA or email is used.
 
-No deployment, registry publication, credentials, widget keys, account provisioning, private application content or personal font/photo binaries are included.
+No credentials, widget keys, account provisioning, private application content or personal font/photo binaries are included.
 
 Timeout guidance distinguishes verification from ambiguous delivery. Only Resend requests with requestId describe a stable retry identifier; Mailgun and legacy Resend requests warn that a new attempt may duplicate delivery. Twenty endpoint test designs run both emitted and through an independent packed install; three additional mock-time memory tests cover limits, capacity and expiry.
 
@@ -47,19 +132,25 @@ context Web Crypto and AbortController. It is not an SSR renderer.
 
 Packed qualification checks the file allowlist and public provenance, imports the
 client without a DOM in Node, resolves both public entries and their types through
-independent NodeNext and Bundler consumers, then runs mocked endpoint and browser
-cases. Source files are intentionally shipped for inspection; scripts, tests,
+independent NodeNext and Bundler consumers, type-checks the README examples, and
+runs semantic error contracts plus mocked endpoint and browser cases. Source files are intentionally shipped for inspection; scripts, tests,
 qualification records, lockfiles and credentials are excluded.
 
-Version 0.1.8 is a public-release candidate; metadata targets the public npm
-registry with public access. No registry publication has occurred or is authorized.
-Confirm scope ownership/access and approve the release before publishing. Release from a clean checkout with `npm ci`,
+Version 0.1.8 is published on the public npm registry. Its qualified source is
+commit `0e12af21b2d3624c3d2f63d3c6172948b34e6ef2`; the immutable archive SHA256 is
+`48d2d910c4e70d0459c9d398aa990d4a5e3beca26581059f3e0ca0fd3d32dd03`.
+Later documentation-only source changes do not replace those published bytes.
+A future registry release needs its own version and approval. Prepare it from a
+clean checkout with `npm ci`,
 `npm test`, `npm run test:packed`, then review `npm pack --dry-run --json`, the exact
 archive integrity and complete license notices. Do not publish from qualification
 consumer directories. The `prepack` hook rebuilds `dist` before every normal pack; do not bypass scripts
 when producing a release archive. Independent consumers install with scripts disabled.
-Run `npm run test:rollback` after packed qualification for an isolated 0.1.7 ->
-candidate -> 0.1.7 endpoint/browser receipt. Keep candidate archives in their unique
+Run `npm run test:rollback` after packed qualification for an isolated published 0.1.8 ->
+source candidate -> published 0.1.8 endpoint/browser receipt. The check downloads
+only the public package archive and verifies its recorded integrity; it calls no
+real verification or email provider. Set `CONTACT_PREVIOUS_ARCHIVE` to an existing
+archive to qualify an older baseline. The same rollback check runs in producer CI. Keep candidate archives in their unique
 qualification directories; never overwrite an earlier archive.
 
 Before upgrading a consumer, retain its previous archive and lockfile, install the
