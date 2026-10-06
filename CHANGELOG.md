@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased source candidate
+## 0.1.9 - unpublished candidate
 
 Reconcile publication state and add typechecked native server/client examples.
 Add optional semantic message overrides and state-only delivery events, stable
 availability response codes and published-baseline rollback qualification in CI.
-These source changes do not replace published 0.1.8 bytes.
+This compatible candidate has its own package identity and archive. It is not
+published and does not replace published 0.1.8 bytes.
 
 ## 0.1.8 - published
 
