@@ -1,8 +1,12 @@
 # Turnstile contact core
 
-Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.4 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
+Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.5 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
 
 ## Shared client integration
+
+Version 0.1.5 defers provider loading while initially offline and starts fresh verification after reconnect, without sending. Supply an initially hidden native `retryVerificationButton` labelled by the consumer (for example, Retry verification). Load failure, expiry and challenge failure expose this control; clicking retries verification in place without reload and preserves fields and delivery identity. It never submits the form.
+
+Personal consumers retain draft persistence by default. Set `persistDraft: false` for a current-open-page-only policy: the client never reads, writes or clears storage, including old drafts. The form's current values still survive verification failures, retry and offline/reconnect. `draftKey` matters only when persistence is enabled. No site-specific browser fork is needed.
 
 Import `mountContactForm` from `@effortlessmetrics/contact-core/client`, never the server root into a browser bundle. The client entry has no server imports, private bindings or framework dependency. Supply the native `form`, challenge container, verification status, delivery status, submit button and an initially hidden accepted indicator, plus the existing public `sitekey` and optional `action`. Optional `endpoint` defaults to `/api/contact`; `draftKey` defaults to the existing `contact-form-draft`. Native fields are named `name`, `email`, `subject`, `message`; labels, limits, button text and site styles stay with the consumer. The returned disposer removes listeners/widget and cancels in-flight requests. Repeated mounting of the same form is idempotent.
 

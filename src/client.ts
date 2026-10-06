@@ -27,6 +27,9 @@ export interface ContactFormOptions {
   endpoint?: string;
   /** Preserve each site's existing visitor-authored local draft key. */
   draftKey?: string;
+  /** False keeps drafts only in the current form; storage is never read or written. */
+  persistDraft?: boolean;
+  retryVerificationButton?: HTMLButtonElement;
   turnstile?: () => TurnstileClient | undefined;
 }
 
@@ -40,6 +43,21 @@ export function mountContactForm(options: ContactFormOptions): () => void {
   const { form, challenge, verificationStatus, deliveryStatus, submitButton, acceptedIndicator } =
     options;
   const draftKey = options.draftKey ?? "contact-form-draft";
+  const persistDraft = options.persistDraft !== false;
+  const retryButton = options.retryVerificationButton;
+  if (retryButton) retryButton.type = "button";
+  let loader: HTMLScriptElement | undefined;
+  const cancelLoader = () => {
+    if (!loader) return;
+    loader.onload = null;
+    loader.onerror = null;
+    loader.remove();
+    loader = undefined;
+  };
+  const retryVisible = (visible: boolean) => {
+    if (retryButton) retryButton.hidden = !visible;
+  };
+  retryVisible(false);
   const provider =
     options.turnstile ?? (() => (window as Window & { turnstile?: TurnstileClient }).turnstile);
   let requestId = crypto.randomUUID();
@@ -73,7 +91,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
   const values = () =>
     Object.fromEntries(fields.map((name) => [name, new FormData(form).get(name)]));
   try {
-    const draft = JSON.parse(localStorage.getItem(draftKey) ?? "null");
+    const draft = persistDraft ? JSON.parse(localStorage.getItem(draftKey) ?? "null") : null;
     if (draft && typeof draft === "object")
       for (const name of fields) {
         const field = form.elements.namedItem(name);
@@ -98,7 +116,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       requestId = crypto.randomUUID();
       if (!sending) setDelivery("idle", "");
       try {
-        localStorage.setItem(draftKey, JSON.stringify(values()));
+        if (persistDraft) localStorage.setItem(draftKey, JSON.stringify(values()));
       } catch {
         /* Keep typing usable. */
       }
@@ -107,7 +125,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
   );
   const renderWidget = () => {
     const turnstile = provider();
-    if (disposed || !turnstile) return;
+    if (disposed || !navigator.onLine || !turnstile) return;
     const generation = ++widgetGeneration;
     expire();
     if (widgetId) turnstile.remove(widgetId);
@@ -118,7 +136,9 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       size: compact.matches ? "compact" : "normal",
       callback: (value) => {
         if (disposed || generation !== widgetGeneration) return;
+        if (!navigator.onLine) return;
         token = value;
+        retryVisible(false);
         submitButton.disabled = sending || !navigator.onLine || !token;
         verificationStatus.textContent = navigator.onLine
           ? "Verification ready."
@@ -127,30 +147,60 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       "expired-callback": () => {
         if (disposed || generation !== widgetGeneration) return;
         expire();
+        retryVisible(navigator.onLine);
         verificationStatus.textContent = "Verification expired. Please verify again.";
       },
       "error-callback": () => {
         if (disposed || generation !== widgetGeneration) return;
         expire();
+        retryVisible(navigator.onLine);
         verificationStatus.textContent = "Verification failed. Please verify again.";
       },
     });
   };
-  const loader = document.createElement("script");
-  loader.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-  loader.async = true;
-  loader.onload = renderWidget;
-  loader.onerror = () => {
-    if (disposed) return;
+  const startVerification = () => {
+    if (disposed || sending) return;
     expire();
-    verificationStatus.textContent =
-      "Verification could not load. Please reload this page to retry.";
+    retryVisible(false);
+    if (!navigator.onLine) {
+      verificationStatus.textContent =
+        "You are offline. Your draft is kept here; reconnect to verify and send.";
+      return;
+    }
+    if (provider()) {
+      if (widgetId) provider()!.reset(widgetId);
+      else renderWidget();
+      return;
+    }
+    if (loader) return;
+    const attempt = document.createElement("script");
+    loader = attempt;
+    attempt.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    attempt.async = true;
+    const failed = () => {
+      if (disposed || loader !== attempt) return;
+      cancelLoader();
+      expire();
+      retryVisible(navigator.onLine);
+      verificationStatus.textContent = "Verification could not load. Please retry verification.";
+    };
+    attempt.onload = () => {
+      if (disposed || loader !== attempt) return;
+      if (!provider()) return failed();
+      cancelLoader();
+      renderWidget();
+    };
+    attempt.onerror = failed;
+    document.head.append(attempt);
   };
+  retryButton?.addEventListener("click", startVerification, listener);
   compact.addEventListener("change", renderWidget, listener);
   window.addEventListener(
     "offline",
     () => {
       expire();
+      cancelLoader();
+      retryVisible(false);
       verificationStatus.textContent =
         "You are offline. Your draft is kept here; reconnect to verify and send.";
     },
@@ -161,8 +211,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
     () => {
       expire();
       verificationStatus.textContent = "Reconnected. Please verify again before sending.";
-      if (widgetId) provider()?.reset(widgetId);
-      else renderWidget();
+      startVerification();
     },
     listener,
   );
@@ -198,7 +247,8 @@ export function mountContactForm(options: ContactFormOptions): () => void {
             result &&
             typeof result === "object" &&
             "error" in result &&
-            typeof result.error === "string" && result.error.trim().length > 0
+            typeof result.error === "string" &&
+            result.error.trim().length > 0
               ? result.error
               : "Your message could not be sent. Please retry.";
           throw new Error(message);
@@ -209,7 +259,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           form.reset();
           requestId = crypto.randomUUID();
           try {
-            localStorage.removeItem(draftKey);
+            if (persistDraft) localStorage.removeItem(draftKey);
           } catch {
             /* Visible acceptance remains valid. */
           }
@@ -230,7 +280,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
         sending = false;
         if (!disposed) {
           expire();
-          if (widgetId) provider()?.reset(widgetId);
+          if (navigator.onLine && widgetId) provider()?.reset(widgetId);
         }
       }
     },
@@ -240,14 +290,11 @@ export function mountContactForm(options: ContactFormOptions): () => void {
     disposed = true;
     events.abort();
     requestController?.abort();
-    loader.onload = null;
-    loader.onerror = null;
-    loader.remove();
+    cancelLoader();
     if (widgetId) provider()?.remove(widgetId);
     mounts.delete(form);
   };
   mounts.set(form, dispose);
-  if (provider()) renderWidget();
-  else document.head.append(loader);
+  startVerification();
   return dispose;
 }
