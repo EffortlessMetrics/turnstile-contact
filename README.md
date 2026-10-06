@@ -73,7 +73,9 @@ message. Keys are `verification-ready`, `verification-expired`, `verification-fa
 is preserved unless its corresponding override is supplied. A 504 response selects
 `delivery-server-timeout` without assuming which provider timed out. POST availability
 responses carry additive JSON `code: "form-unavailable"` or `"service-unavailable"`;
-existing text, status and disabled/configuration behavior are unchanged.
+existing text, status and disabled/configuration behavior are unchanged. When old
+endpoints omit machine codes, the producer also recognizes known legacy form/service
+unavailability messages for optional overrides; consumers do not compare English text.
 
 For example, pass `messages: { "delivery-network-error": "Please reconnect and retry." }`
 to the mount options. The delivery-status element also emits bubbling

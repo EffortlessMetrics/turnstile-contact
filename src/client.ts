@@ -297,6 +297,19 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           if (result && typeof result === "object" && "code" in result) {
             if (result.code === "form-unavailable") failureCode = "delivery-form-unavailable";
             if (result.code === "service-unavailable") failureCode = "delivery-service-unavailable";
+          } else if (result && typeof result === "object" && "error" in result) {
+            // Compatibility with legacy endpoints before machine-readable codes.
+            // Keep these translations in the producer, not consumer DOM observers.
+            if (
+              result.error === "The form is unavailable. Please use email instead." ||
+              result.error === "The form is unavailable. Please try again later."
+            )
+              failureCode = "delivery-form-unavailable";
+            if (
+              result.error === "The service is unavailable. Please use email instead." ||
+              result.error === "The service is unavailable. Please try again later."
+            )
+              failureCode = "delivery-service-unavailable";
           }
           const message =
             result &&

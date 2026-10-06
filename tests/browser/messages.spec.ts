@@ -58,6 +58,42 @@ for (const scenario of [
     expected: "Custom service unavailable",
   },
   {
+    name: "legacy-form-unavailable",
+    code: "delivery-form-unavailable",
+    status: 503,
+    error: "The form is unavailable. Please use email instead.",
+    expected: "Custom form unavailable",
+  },
+  {
+    name: "legacy-service-unavailable",
+    code: "delivery-service-unavailable",
+    status: 502,
+    error: "The service is unavailable. Please use email instead.",
+    expected: "Custom service unavailable",
+  },
+  {
+    name: "published-form-unavailable",
+    code: "delivery-form-unavailable",
+    status: 503,
+    error: "The form is unavailable. Please try again later.",
+    expected: "Custom form unavailable",
+  },
+  {
+    name: "published-service-unavailable",
+    code: "delivery-service-unavailable",
+    status: 502,
+    error: "The service is unavailable. Please try again later.",
+    expected: "Custom service unavailable",
+  },
+  {
+    name: "explicit-code-wins",
+    code: "delivery-service-unavailable",
+    status: 503,
+    serverCode: "service-unavailable",
+    error: "The form is unavailable. Please use email instead.",
+    expected: "Custom service unavailable",
+  },
+  {
     name: "rejected",
     code: "delivery-rejected",
     status: 422,
@@ -77,7 +113,7 @@ for (const scenario of [
         r.fulfill({
           status: scenario.status!,
           json: {
-            error: "Arbitrary localized server message",
+            error: scenario.error ?? "Arbitrary localized server message",
             ...(scenario.serverCode ? { code: scenario.serverCode } : {}),
           },
         }),

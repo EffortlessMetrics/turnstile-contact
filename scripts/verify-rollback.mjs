@@ -89,7 +89,7 @@ for (const [stage, archive] of [
       .update(await readFile(archive))
       .digest("hex"),
     endpointCases: 20,
-    browserCases: stage === "candidate" ? 23 : 15,
+    browserCases: stage === "candidate" ? 28 : 15,
   });
 }
 assert.equal(receipts[0].sha512, receipts[2].sha512);
