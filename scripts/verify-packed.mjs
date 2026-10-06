@@ -86,6 +86,14 @@ function types(kv: KVStore, provider: TurnstileClient) { return [kv, provider]; 
 void [response, optionsResponse, getResponse, mount, types];
 `,
 );
+const exampleBlocks = [
+  ...(await readFile("README.md", "utf8")).matchAll(/```ts\r?\n([\s\S]*?)```/g),
+];
+assert.equal(exampleBlocks.length, 2, "Keep native adapter/client README examples qualified");
+await writeFile(
+  resolve(root, "readme-examples.mts"),
+  exampleBlocks.map((block) => block[1]).join("\n"),
+);
 for (const resolution of ["NodeNext", "Bundler"]) {
   execFileSync(
     process.execPath,
@@ -102,6 +110,7 @@ for (const resolution of ["NodeNext", "Bundler"]) {
       "--moduleResolution",
       resolution,
       "consumer.mts",
+      "readme-examples.mts",
     ],
     { cwd: root, stdio: "inherit" },
   );
@@ -130,6 +139,10 @@ execFileSync(process.execPath, ["scripts/contact-tests.mjs"], {
   stdio: "inherit",
   env: { ...process.env, CONTACT_PACKED_MODULE: pathToFileURL(module).href },
 });
+execFileSync(process.execPath, ["scripts/message-contract-tests.mjs"], {
+  stdio: "inherit",
+  env: { ...process.env, CONTACT_PACKED_MODULE: pathToFileURL(module).href },
+});
 console.log(
   JSON.stringify({
     packedConsumer: true,
@@ -140,7 +153,7 @@ console.log(
 );
 execFileSync(process.execPath, ["node_modules/@playwright/test/cli.js", "test"], {
   stdio: "inherit",
-  env: { ...process.env, CONTACT_CONSUMER_ROOT: root },
+  env: { ...process.env, CONTACT_CONSUMER_ROOT: root, CONTACT_EXPECT_MESSAGE_API: "true" },
 });
 
 await writeFile(

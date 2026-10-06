@@ -6,5 +6,7 @@ import {mountContactForm} from './node_modules/@effortlessmetrics/contact-core/d
 const params=new URLSearchParams(location.search);
 let n=0;if(params.get('provider')!=='remote')window.turnstile={render:(element,options)=>{window.widgetOptions=options;element.style.width=options.size==='compact'?'150px':'300px';window.refreshToken=()=>options.callback('synthetic-token-'+(++n));if(params.get('defer')!=='true')window.refreshToken();return 'widget'},reset:()=>window.refreshToken(),remove:()=>{}};
 const options={form:document.querySelector('#contact'),challenge:document.querySelector('#challenge'),verificationStatus:document.querySelector('#verification'),deliveryStatus:document.querySelector('#delivery'),submitButton:document.querySelector('#submit'),acceptedIndicator:document.querySelector('#accepted'),retryVerificationButton:document.querySelector('#retry'),persistDraft:params.get('persist')!=='false',sitekey:'synthetic-test-sitekey'};
+if(params.get("customMessages")==="true") options.messages=window.contactMessages;
+window.deliveryEvents=[];options.deliveryStatus.addEventListener("contact:delivery-state",event=>window.deliveryEvents.push(event.detail));
 window.dispose=mountContactForm(options);window.mountAgain=()=>mountContactForm(options);
 </script>
