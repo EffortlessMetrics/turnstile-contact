@@ -4,7 +4,8 @@ import type { KVStore } from "./types";
  * KV-backed rate limiting for Cloudflare Workers/Pages
  *
  * Stores rate buckets across requests; KV is eventually consistent, not an atomic limiter.
- * The consuming handler fails closed if its required KV binding is unavailable.
+ * A configured but unavailable KV binding fails closed. Without a binding,
+ * the legacy-compatible bounded isolate-local limiter is used.
  */
 
 export interface RateLimitDecision {
@@ -22,6 +23,31 @@ const DEFAULT_CONFIG: RateLimitConfig = {
   limit: 5,
   windowMs: 15 * 60 * 1000, // 15 minutes
 };
+
+const localBuckets = new Map<string, { count: number; resetAt: number }>();
+const MAX_LOCAL_BUCKETS = 10000;
+export function checkRateLimitMemory(
+  clientKey: string,
+  config: RateLimitConfig,
+): RateLimitDecision {
+  const now = Date.now();
+  for (const [key, bucket] of localBuckets) {
+    if (bucket.resetAt <= now) localBuckets.delete(key);
+  }
+  let bucket = localBuckets.get(clientKey);
+  if (!bucket) {
+    if (localBuckets.size >= MAX_LOCAL_BUCKETS)
+      return { allowed: false, remaining: 0, resetAt: now + config.windowMs };
+    bucket = { count: 0, resetAt: (Math.floor(now / config.windowMs) + 1) * config.windowMs };
+    localBuckets.set(clientKey, bucket);
+  }
+  bucket.count = Math.min(bucket.count + 1, config.limit + 1);
+  return {
+    allowed: bucket.count <= config.limit,
+    remaining: Math.max(0, config.limit - bucket.count),
+    resetAt: bucket.resetAt,
+  };
+}
 
 /**
  * Check and update rate limit using Cloudflare KV

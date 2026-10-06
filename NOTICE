@@ -1,3 +1,12 @@
 Portions adapted from the existing MIT-licensed contact implementation.
-Copyright (c) 2025 Steven Zimmerman. Permission notice is retained in LICENSE.
-The extracted core changes request-origin enforcement, hostname/action binding, rate accounting, plain-text/HTML boundaries and delivery idempotency. No private site configuration or source history is included.
+Copyright (c) 2025 Steven Zimmerman. The complete permission notice is retained
+in LICENSE-MIT.
+
+The copyright owner authorizes the extracted core under MIT OR Apache-2.0.
+This grant applies to the extracted owner code, not third-party dependencies
+or the whole application. See LICENSE, LICENSE-MIT and LICENSE-APACHE.
+
+Upstream source repository: https://github.com/EffortlessMetrics/turnstile-contact
+The extracted core includes request-origin enforcement, hostname/action binding,
+rate accounting, plain-text/HTML boundaries and delivery idempotency. No private
+site configuration is included.

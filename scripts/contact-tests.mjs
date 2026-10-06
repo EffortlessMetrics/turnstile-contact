@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 await mkdir(".evidence", { recursive: true });
-const core = await import("../dist/index.js");
+const core = await import(process.env.CONTACT_PACKED_MODULE || "../dist/index.js");
 const onRequestPost = ({ request, env }) => core.handleContactPost(request, env);
 const onRequestOptions = ({ request, env }) => core.handleContactOptions(request, env);
 const origin = "https://business.example";
@@ -58,7 +58,10 @@ globalThis.fetch = async (url, options) => {
   calls.push({ url: String(url), options });
   if (String(url).includes("/siteverify"))
     return new Response(JSON.stringify(captcha), { status: 200 });
-  if (String(url) === "https://api.resend.com/emails") {
+  if (
+    String(url) === "https://api.resend.com/emails" ||
+    String(url).startsWith("https://api.mailgun.net/v3/")
+  ) {
     const item = vendor.shift();
     if (item instanceof Error) throw item;
     return new Response("{}", { status: item ?? 200 });
@@ -81,8 +84,6 @@ try {
       "CONTACT_TO",
       "TURNSTILE_SECRET_KEY",
       "RESEND_API_KEY",
-      "CONTACT_RATE_LIMIT",
-      "CONTACT_TURNSTILE_ACTION",
       "CONTACT_TURNSTILE_HOSTNAME",
     ]) {
       const e = env();
@@ -364,6 +365,160 @@ try {
       globalThis.fetch = prior;
     }
   });
+  await check(
+    "legacy action-free widget and four-field contract retain host verification",
+    async () => {
+      const e = env();
+      delete e.CONTACT_TURNSTILE_ACTION;
+      captcha = { success: true, hostname: "business.example" };
+      const legacy = { ...body };
+      delete legacy.requestId;
+      assert.equal((await onRequestPost({ request: request(legacy), env: e })).status, 200);
+      assert.ok(calls.at(-1).options.headers["Idempotency-Key"]);
+      captcha = { success: true, hostname: "unapproved.example" };
+      assert.equal((await onRequestPost({ request: request(legacy), env: e })).status, 400);
+      captcha = { success: false };
+      assert.equal((await onRequestPost({ request: request(legacy), env: e })).status, 400);
+      e.CONTACT_TURNSTILE_ACTION = "";
+      assert.equal((await onRequestPost({ request: request(legacy), env: e })).status, 503);
+    },
+  );
+  await check(
+    "optional KV retains bounded isolate-local IP and verified email limits",
+    async () => {
+      const e = env();
+      delete e.CONTACT_RATE_LIMIT;
+      for (let i = 0; i < 5; i++)
+        assert.equal(
+          (
+            await onRequestPost({
+              request: request("{", { "CF-Connecting-IP": "192.0.2.90" }),
+              env: e,
+            })
+          ).status,
+          400,
+        );
+      const blocked = await onRequestPost({
+        request: request(body, { "CF-Connecting-IP": "192.0.2.90" }),
+        env: e,
+      });
+      assert.equal(blocked.status, 429);
+      assert.ok(Number(blocked.headers.get("Retry-After")) > 0);
+      for (let i = 0; i < 4; i++)
+        assert.equal(
+          (
+            await onRequestPost({
+              request: request(
+                { ...body, email: "limited@example.com" },
+                { "CF-Connecting-IP": "192.0.2." + (91 + i) },
+              ),
+              env: e,
+            })
+          ).status,
+          i < 3 ? 200 : 429,
+        );
+      assert.equal(calls.filter((c) => c.url.includes("resend")).length, 3);
+    },
+  );
+  await check(
+    "Mailgun only when Resend is unconfigured, with escaped reply-to delivery",
+    async () => {
+      const e = env();
+      delete e.RESEND_API_KEY;
+      e.MAILGUN_API_KEY = "mock-mailgun";
+      e.MAILGUN_DOMAIN = "mail.example";
+      assert.equal(
+        (
+          await onRequestPost({
+            request: request({ ...body, message: "<script>example</script>\ncode" }),
+            env: e,
+          })
+        ).status,
+        200,
+      );
+      const sent = calls.at(-1);
+      assert.equal(sent.url, "https://api.mailgun.net/v3/mail.example/messages");
+      assert.equal(sent.options.body.get("h:Reply-To"), body.email);
+      assert.match(sent.options.body.get("html"), /&lt;script&gt;/);
+      assert.equal(sent.options.body.get("to"), e.CONTACT_TO);
+      assert.equal(sent.options.headers.Authorization, "Basic " + btoa("api:mock-mailgun"));
+      calls = [];
+      e.RESEND_API_KEY = "mock-resend";
+      vendor = [403];
+      assert.equal((await onRequestPost({ request: request(), env: e })).status, 502);
+      assert.equal(calls.filter((c) => c.url.includes("mailgun")).length, 0);
+      calls = [];
+      delete e.RESEND_API_KEY;
+      e.MAILGUN_DOMAIN = "mail.example/attacker";
+      assert.equal((await onRequestPost({ request: request(), env: e })).status, 503);
+      assert.equal(calls.length, 0);
+    },
+  );
+  await check(
+    "Mailgun ambiguous sends are not retried and errors offer no public email fallback",
+    async () => {
+      const e = env();
+      delete e.RESEND_API_KEY;
+      e.MAILGUN_API_KEY = "mock-mailgun";
+      e.MAILGUN_DOMAIN = "mail.example";
+      vendor = [503];
+      const failed = await onRequestPost({ request: request(), env: e });
+      assert.equal(failed.status, 502);
+      assert.equal(calls.filter((c) => c.url.includes("mailgun")).length, 1);
+      assert.doesNotMatch(await failed.text(), /use email|mailto:|recipient@example/);
+      const prior = globalThis.fetch;
+      globalThis.fetch = async (url, options) => {
+        if (String(url).includes("mailgun")) {
+          const error = new Error("timeout");
+          error.name = "TimeoutError";
+          throw error;
+        }
+        return prior(url, options);
+      };
+      try {
+        assert.equal((await onRequestPost({ request: request(), env: e })).status, 504);
+      } finally {
+        globalThis.fetch = prior;
+      }
+    },
+  );
+  await check(
+    "timeout guidance promises stable identity only for Resend with requestId",
+    async () => {
+      for (const kind of ["resend-id", "resend-legacy", "mailgun"]) {
+        const e = env(),
+          data = { ...body };
+        if (kind === "resend-legacy") delete data.requestId;
+        if (kind === "mailgun") {
+          delete e.RESEND_API_KEY;
+          e.MAILGUN_API_KEY = "mock-mailgun";
+          e.MAILGUN_DOMAIN = "mail.example";
+        }
+        let sends = 0;
+        const prior = globalThis.fetch;
+        globalThis.fetch = async (url, options) => {
+          if (String(url).includes("siteverify")) return prior(url, options);
+          sends++;
+          const error = new Error("ambiguous provider timeout");
+          error.name = "TimeoutError";
+          throw error;
+        };
+        try {
+          const result = await onRequestPost({ request: request(data), env: e });
+          assert.equal(result.status, 504);
+          const text = await result.text();
+          if (kind === "resend-id") assert.match(text, /same Resend delivery identifier/);
+          else {
+            assert.match(text, /may deliver a duplicate/);
+            assert.doesNotMatch(text, /same .*identifier/);
+          }
+          assert.equal(sends, kind === "mailgun" ? 1 : 2);
+        } finally {
+          globalThis.fetch = prior;
+        }
+      }
+    },
+  );
   await writeFile(
     ".evidence/contact-tests.json",
     JSON.stringify(

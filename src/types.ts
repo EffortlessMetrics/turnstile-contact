@@ -11,5 +11,7 @@ export interface ContactEnv {
   CONTACT_TO?: string;
   TURNSTILE_SECRET_KEY?: string;
   RESEND_API_KEY?: string;
+  MAILGUN_API_KEY?: string;
+  MAILGUN_DOMAIN?: string;
   CONTACT_RATE_LIMIT?: KVStore;
 }
