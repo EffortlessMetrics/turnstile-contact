@@ -1,10 +1,10 @@
 # Turnstile contact core
 
-Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.6 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
+Private ESM core for the existing Turnstile workflow, built by Vite Plus Pack. Consumers own markup, origins and private bindings. Version 0.1.7 adds a shared native client alongside the unchanged 0.1.3 server behavior. Frozen earlier archives remain unchanged. Owner code is MIT OR Apache-2.0; complete notices are packed and dependency licenses remain separate.
 
 ## Shared client integration
 
-Version 0.1.6 defers provider loading while initially offline and starts fresh verification after reconnect, without sending. Supply an initially hidden native `retryVerificationButton` labelled by the consumer (for example, Retry verification). Load failure, expiry and challenge failure expose this control; clicking retries verification in place without reload and preserves fields and delivery identity. It never submits the form.
+Version 0.1.7 defers provider loading while initially offline and starts fresh verification after reconnect, without sending. Supply an initially hidden native `retryVerificationButton` labelled by the consumer (for example, Retry verification). Load failure, expiry and challenge failure expose this control; clicking retries verification in place without reload and preserves fields and delivery identity. It never submits the form.
 
 Personal consumers retain draft persistence by default. Set `persistDraft: false` for a current-open-page-only policy: the client never reads, writes or clears storage, including old drafts. The form's current values still survive verification failures, retry and offline/reconnect. `draftKey` matters only when persistence is enabled. No site-specific browser fork is needed.
 
@@ -33,3 +33,5 @@ npm ci, npm test and npm run test:packed build ESM/declarations, typecheck, test
 No deployment, registry publication, credentials, widget keys, account provisioning, private application content or personal font/photo binaries are included.
 
 Timeout guidance distinguishes verification from ambiguous delivery. Only Resend requests with requestId describe a stable retry identifier; Mailgun and legacy Resend requests warn that a new attempt may duplicate delivery. Twenty endpoint test designs run both emitted and through an independent packed install; three additional mock-time memory tests cover limits, capacity and expiry.
+
+Offline/reconnect invalidates the old widget generation. Fresh verification renders a new widget; stale success/error/expiry callbacks cannot enable submission or replace current status.

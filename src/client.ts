@@ -166,8 +166,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       return;
     }
     if (provider()) {
-      if (widgetId) provider()!.reset(widgetId);
-      else renderWidget();
+      renderWidget();
       return;
     }
     if (loader) return;
@@ -196,6 +195,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
   window.addEventListener(
     "offline",
     () => {
+      widgetGeneration++;
       expire();
       cancelLoader();
       retryVisible(false);
@@ -207,6 +207,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
   window.addEventListener(
     "online",
     () => {
+      widgetGeneration++;
       expire();
       verificationStatus.textContent = "Reconnected. Please verify again before sending.";
       startVerification();
@@ -281,7 +282,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
         sending = false;
         if (!disposed) {
           expire();
-          if (navigator.onLine && widgetId) provider()?.reset(widgetId);
+          if (navigator.onLine) renderWidget();
         }
       }
     },

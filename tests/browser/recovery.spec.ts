@@ -1,4 +1,50 @@
 import { test, expect, type Page } from "@playwright/test";
+test("offline and reconnect invalidate stale success, error and expiry callbacks", async ({
+  page,
+}) => {
+  let sends = 0;
+  await page.addInitScript(() => {
+    (window as any).syntheticOnline = true;
+    Object.defineProperty(navigator, "onLine", { get: () => (window as any).syntheticOnline });
+  });
+  await page.route("**/api/contact", (r) => {
+    sends++;
+    return r.abort();
+  });
+  await page.goto("/?defer=true");
+  await fields(page);
+  await page.evaluate(() => {
+    (window as any).oldOptions = (window as any).widgetOptions;
+    (window as any).refreshToken();
+  });
+  const submit = page.getByRole("button", { name: "Send message", exact: true });
+  await expect(submit).toBeEnabled();
+  await page.evaluate(() => {
+    (window as any).syntheticOnline = false;
+    window.dispatchEvent(new Event("offline"));
+    (window as any).oldOptions.callback("stale-offline");
+    (window as any).oldOptions["error-callback"]();
+    (window as any).oldOptions["expired-callback"]();
+  });
+  await expect(submit).toBeDisabled();
+  await expect(page.locator("#verification")).toContainText("offline");
+  await page.evaluate(() => {
+    (window as any).syntheticOnline = true;
+    window.dispatchEvent(new Event("online"));
+  });
+  await expect(submit).toBeDisabled();
+  const status = await page.locator("#verification").textContent();
+  await page.evaluate(() => {
+    (window as any).oldOptions.callback("stale-reconnected");
+    (window as any).oldOptions["error-callback"]();
+    (window as any).oldOptions["expired-callback"]();
+  });
+  await expect(submit).toBeDisabled();
+  await expect(page.locator("#verification")).toHaveText(status!);
+  await page.evaluate(() => (window as any).refreshToken());
+  await expect(submit).toBeEnabled();
+  expect(sends).toBe(0);
+});
 test("HTML platform errors show the visible retry message rather than JSON parser details", async ({
   page,
 }) => {
