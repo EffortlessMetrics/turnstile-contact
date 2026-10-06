@@ -35,3 +35,33 @@ No deployment, registry publication, credentials, widget keys, account provision
 Timeout guidance distinguishes verification from ambiguous delivery. Only Resend requests with requestId describe a stable retry identifier; Mailgun and legacy Resend requests warn that a new attempt may duplicate delivery. Twenty endpoint test designs run both emitted and through an independent packed install; three additional mock-time memory tests cover limits, capacity and expiry.
 
 Offline/reconnect invalidates the old widget generation. Fresh verification renders a new widget; stale success/error/expiry callbacks cannot enable submission or replace current status.
+
+## Runtime and release preparation
+
+The package is ESM-only. The server root uses standard Fetch, Web Crypto, FormData
+and TextEncoder APIs; consumers supply the trusted platform IP header and optional
+structural KV binding. Node imports require the declared Node engine. No runtime
+npm dependencies or framework peers are required. Importing either entry during
+SSR is safe; call `mountContactForm` only in a browser with native DOM APIs, secure
+context Web Crypto and AbortController. It is not an SSR renderer.
+
+Packed qualification checks the file allowlist and public provenance, imports the
+client without a DOM in Node, resolves both public entries and their types through
+independent NodeNext and Bundler consumers, then runs mocked endpoint and browser
+cases. Source files are intentionally shipped for inspection; scripts, tests,
+qualification records, lockfiles and credentials are excluded.
+
+This remains a private package (`private: true`); no registry release is authorized.
+A future release needs a separately approved registry destination/access policy,
+version and public metadata review. Release from a clean checkout with `npm ci`,
+`npm test`, `npm run test:packed`, then review `npm pack --dry-run --json`, the exact
+archive integrity and complete license notices. Do not publish from qualification
+consumer directories. Build before packing; packing alone does not rebuild `dist`.
+
+Before upgrading a consumer, retain its previous archive and lockfile, install the
+candidate with scripts disabled, and run that consumer's local endpoint/browser
+checks against the candidate. Confirm persistence policy, adapter binding aliases,
+verification recovery and acceptance status. Record both archive integrities and
+consumer heads. Roll back by restoring the previous archive dependency and lockfile,
+reinstalling and repeating the same checks. Package upgrade/rollback does not itself
+authorize changing live bindings or deploying either site.

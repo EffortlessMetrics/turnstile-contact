@@ -5,10 +5,17 @@ import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 const npm = process.env.npm_execpath;
 assert.ok(npm, "Run through npm run test:packed");
+const packDestination = resolve(".qualification/candidate");
+await mkdir(packDestination, { recursive: true });
 const packed = JSON.parse(
-  execFileSync(process.execPath, [npm, "pack", "--json"], { encoding: "utf8" }),
+  execFileSync(process.execPath, [npm, "pack", "--json", "--pack-destination", packDestination], {
+    encoding: "utf8",
+  }),
 )[0];
 for (const name of [
+  "LICENSE",
+  "NOTICE",
+  "README.md",
   "LICENSE-MIT",
   "LICENSE-APACHE",
   "dist/index.js",
@@ -20,6 +27,25 @@ for (const name of [
     packed.files.some((file) => file.path === name),
     name,
   );
+const allowedRootFiles = new Set([
+  "package.json",
+  "README.md",
+  "LICENSE",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  "NOTICE",
+]);
+for (const file of packed.files) {
+  assert.ok(
+    allowedRootFiles.has(file.path) || /^(dist|src)\/[a-zA-Z0-9_.-]+$/.test(file.path),
+    `Unexpected packed file: ${file.path}`,
+  );
+  const content = await readFile(file.path, "utf8");
+  assert.ok(
+    !/Sentinel_[a-f0-9]+|[A-Z]:\\Users\\|\/Users\/|\/home\//.test(content),
+    `Private provenance or machine path in ${file.path}`,
+  );
+}
 const root = resolve(".qualification/packed-consumer");
 await mkdir(root, { recursive: true });
 await writeFile(
@@ -35,10 +61,46 @@ execFileSync(
     "--offline",
     "--no-audit",
     "--no-fund",
-    resolve(packed.filename),
+    resolve(packDestination, packed.filename),
   ],
   { cwd: root, stdio: "inherit" },
 );
+await writeFile(
+  resolve(root, "consumer.mts"),
+  `
+import { handleContactPost, handleContactOptions, handleContactGet } from '@effortlessmetrics/contact-core';
+import type { ContactEnv, KVStore } from '@effortlessmetrics/contact-core';
+import { mountContactForm } from '@effortlessmetrics/contact-core/client';
+import type { ContactFormOptions, TurnstileClient } from '@effortlessmetrics/contact-core/client';
+const env: ContactEnv = {};
+const response: Promise<Response> = handleContactPost(new Request('https://example.test'), env);
+const optionsResponse: Promise<Response> = handleContactOptions(new Request('https://example.test'), env);
+const getResponse: Response = handleContactGet();
+function mount(options: ContactFormOptions): () => void { return mountContactForm(options); }
+function types(kv: KVStore, provider: TurnstileClient) { return [kv, provider]; }
+void [response, optionsResponse, getResponse, mount, types];
+`,
+);
+for (const resolution of ["NodeNext", "Bundler"]) {
+  execFileSync(
+    process.execPath,
+    [
+      resolve("node_modules/typescript/bin/tsc"),
+      "--noEmit",
+      "--strict",
+      "--target",
+      "ES2022",
+      "--lib",
+      "ES2022,DOM",
+      "--module",
+      resolution === "NodeNext" ? "NodeNext" : "ESNext",
+      "--moduleResolution",
+      resolution,
+      "consumer.mts",
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+}
 const module = resolve(root, "node_modules/@effortlessmetrics/contact-core/dist/index.js");
 const client = await readFile(
   resolve(root, "node_modules/@effortlessmetrics/contact-core/dist/client.js"),
@@ -66,7 +128,7 @@ execFileSync(process.execPath, ["scripts/contact-tests.mjs"], {
 console.log(
   JSON.stringify({
     packedConsumer: true,
-    archive: packed.filename,
+    archive: resolve(packDestination, packed.filename),
     integrity: packed.integrity,
     sourceAliases: false,
   }),
