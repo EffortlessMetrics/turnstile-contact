@@ -138,11 +138,12 @@ independent NodeNext and Bundler consumers, type-checks the README examples, and
 runs semantic error contracts plus mocked endpoint and browser cases. Source files are intentionally shipped for inspection; scripts, tests,
 qualification records, lockfiles and credentials are excluded.
 
-Version 0.1.8 is published on the public npm registry. The maintained source and
-prepared candidate are version 0.1.9, which remains unpublished. Its qualified source is
-commit `0e12af21b2d3624c3d2f63d3c6172948b34e6ef2`; the immutable archive SHA256 is
+Version 0.1.8 is published on the public npm registry. Published 0.1.8 qualified
+source is commit `0e12af21b2d3624c3d2f63d3c6172948b34e6ef2`; the immutable archive SHA256 is
 `48d2d910c4e70d0459c9d398aa990d4a5e3beca26581059f3e0ca0fd3d32dd03`.
-Candidate 0.1.9 adds the documented semantic presentation API and current examples;
+
+The maintained source and prepared candidate are version 0.1.9, which remains
+unpublished. Candidate 0.1.9 adds the documented semantic presentation API and current examples;
 its source/archive changes do not replace published 0.1.8 bytes.
 A future registry release needs its own version and approval. Prepare it from a
 clean checkout with `npm ci`,
