@@ -24,6 +24,7 @@ export type ContactMessageCode =
   | "verification-load-failed"
   | "delivery-sending"
   | "delivery-accepted"
+  | "delivery-accepted-with-edits"
   | "delivery-client-timeout"
   | "delivery-network-error"
   | "delivery-server-timeout"
@@ -31,7 +32,7 @@ export type ContactMessageCode =
   | "delivery-form-unavailable"
   | "delivery-service-unavailable";
 export interface ContactDeliveryState {
-  state: "idle" | "sending" | "accepted" | "error";
+  state: "idle" | "sending" | "accepted" | "accepted-with-edits" | "error";
   code?: ContactMessageCode;
 }
 
@@ -152,7 +153,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       )
         return;
       requestId = crypto.randomUUID();
-      if (!sending) setDelivery("idle", "");
+      if (!sending || form.dataset.contactState === "accepted") setDelivery("idle", "");
       try {
         if (persistDraft) localStorage.setItem(draftKey, JSON.stringify(values()));
       } catch {
@@ -324,7 +325,6 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           throw new Error(message);
         }
         if (disposed) return;
-        setDelivery("accepted", "Message sent.", "delivery-accepted");
         if (identity === requestId) {
           form.reset();
           requestId = crypto.randomUUID();
@@ -333,7 +333,14 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           } catch {
             /* Visible acceptance remains valid. */
           }
-        } else acceptedIndicator.hidden = true; // Preserve edits made while the accepted request was pending.
+          setDelivery("accepted", "Message sent.", "delivery-accepted");
+        } else {
+          setDelivery(
+            "accepted-with-edits",
+            "Message sent. Your changes have not been sent.",
+            "delivery-accepted-with-edits",
+          );
+        }
       } catch (error) {
         if (disposed) return;
         setDelivery(
