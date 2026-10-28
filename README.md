@@ -69,7 +69,7 @@ Install that candidate archive with scripts disabled to use the API; it is not
 available from the registry. Omit overrides to retain every default
 message. Keys are `verification-ready`, `verification-expired`, `verification-failed`,
 `verification-offline`, `verification-reconnected`, `verification-load-failed`,
-`delivery-sending`, `delivery-accepted`, `delivery-client-timeout`,
+`delivery-sending`, `delivery-accepted`, `delivery-accepted-with-edits`, `delivery-client-timeout`,
 `delivery-network-error`, `delivery-server-timeout`, `delivery-rejected`,
 `delivery-form-unavailable` and `delivery-service-unavailable`. Server rejection text
 is preserved unless its corresponding override is supplied. A 504 response selects
@@ -84,8 +84,10 @@ to the mount options. The delivery-status element also emits bubbling, composed
 `contact:delivery-state` events with exported `ContactDeliveryState` detail containing
 only `state` and optional `code`. Consumers can focus their error status through this
 event instead of observing or comparing English text. No form values, identifiers,
-tokens or private bindings are included. An accepted event describes the submitted
-request; later edits retain their draft and hide the indicator. These options affect
+tokens or private bindings are included. If the visitor edits while a request is pending,
+the `accepted-with-edits` state and `delivery-accepted-with-edits` code announce that
+the submitted message was sent but the current changes were not. The draft is retained,
+the check is hidden, and the status remains visible. These options affect
 presentation only;
 acceptance, draft persistence, verification and delivery identity are unchanged.
 
@@ -97,7 +99,7 @@ Personal consumers retain draft persistence by default. Set `persistDraft: false
 
 Import `mountContactForm` from `@effortlessmetrics/contact-core/client`, never the server root into a browser bundle. The client entry has no server imports, private bindings or framework dependency. Supply the native `form`, challenge container, verification status, delivery status, submit button and an initially hidden accepted indicator, plus the existing public `sitekey` and optional `action`. Optional `endpoint` defaults to `/api/contact`; `draftKey` defaults to the existing `contact-form-draft`. Native fields are named `name`, `email`, `subject`, `message`; labels, limits, button text and site styles stay with the consumer. The returned disposer removes listeners/widget and cancels in-flight requests. Repeated mounting of the same form is idempotent.
 
-The client separately updates verification and delivery status. Only HTTP success **and** JSON `success: true` mark acceptance. The consumer's small green check is revealed through `acceptedIndicator.hidden = false`; its aria-hidden visual is accompanied by the polite, atomic delivery-status announcement `Message sent.`. Server thank-you text is not rendered. The client sets `data-contact-state` to `idle`, `sending`, `accepted` or `error` on the form and delivery status. Style only the accepted status as visually hidden (standard sr-only styling), keeping sending/error text visible; do not give the delivery element an unconditional hidden class. Keep the native submit button's label unchanged and style the indicator with the site's green success color. Verification alone never displays delivery acceptance or sends.
+The client separately updates verification and delivery status. Only HTTP success **and** JSON `success: true` mark acceptance. The consumer's small green check is revealed through `acceptedIndicator.hidden = false`; its aria-hidden visual is accompanied by the polite, atomic delivery-status announcement `Message sent.`. Server thank-you text is not rendered. The client sets `data-contact-state` to `idle`, `sending`, `accepted`, `accepted-with-edits` or `error` on the form and delivery status. Style only the accepted status as visually hidden (standard sr-only styling), keeping sending, accepted-with-edits and error text visible; do not give the delivery element an unconditional hidden class. Keep the native submit button's label unchanged and style the indicator with the site's green success color. Verification alone never displays delivery acceptance or sends.
 
 An accepted request clears its unchanged draft and rotates identity. New input clears the accepted indicator; unchanged failed retries retain identity and obtain a fresh token. Later failure cannot retain a previous green check. Editing while a request is pending preserves the new draft and does not show acceptance for that edited content. Offline/reconnect, compact challenge sizing, expiry and errors do not submit automatically or overwrite delivery errors. Timeout text preserves the existing ambiguity/possible-duplicate warning. All qualification uses synthetic tokens and intercepted requests, with no live CAPTCHA or email.
 

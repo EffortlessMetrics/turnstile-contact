@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+declare const process: { env: Record<string, string | undefined> };
 async function fields(page: Page, subject = "Synthetic subject") {
   await page.getByLabel("Name", { exact: true }).fill("Synthetic sender");
   await page.getByLabel("Email", { exact: true }).fill("sender@example.test");
@@ -88,8 +89,10 @@ test("mounting twice does not send twice; editing a pending request preserves th
 }) => {
   let send: any;
   let count = 0;
+  const payloads: any[] = [];
   await page.route("**/api/contact", (r) => {
     count++;
+    payloads.push(r.request().postDataJSON());
     send = r;
   });
   await page.goto("/");
@@ -99,7 +102,17 @@ test("mounting twice does not send twice; editing a pending request preserves th
   await expect.poll(() => count).toBe(1);
   await page.getByLabel("Message", { exact: true }).fill("New draft while awaiting acceptance.");
   await send.fulfill({ json: { success: true } });
-  await expect(page.locator("#delivery")).toHaveText("Message sent.");
+  if (process.env.CONTACT_EXPECT_MESSAGE_API !== "true") {
+    await expect(page.locator("#delivery")).toHaveText("Message sent.");
+    await expect(page.getByLabel("Message", { exact: true })).toHaveValue("New draft while awaiting acceptance.");
+    await expect(page.locator("#accepted")).toBeHidden();
+    return;
+  }
+  await expect(page.locator("#delivery")).toHaveText("Message sent. Your changes have not been sent.");
+  await expect(page.locator("#delivery")).toHaveAttribute("data-contact-state", "accepted-with-edits");
+  await expect(page.locator("#delivery")).toBeInViewport();
+  expect(await page.locator("#delivery").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(1);
+  expect(await page.evaluate(() => (window as any).deliveryEvents.at(-1))).toEqual({ state: "accepted-with-edits", code: "delivery-accepted-with-edits" });
   await expect(page.getByLabel("Message", { exact: true })).toHaveValue(
     "New draft while awaiting acceptance.",
   );
@@ -107,4 +120,13 @@ test("mounting twice does not send twice; editing a pending request preserves th
   expect(
     await page.evaluate(() => JSON.parse(localStorage.getItem("contact-form-draft")!).message),
   ).toBe("New draft while awaiting acceptance.");
+  await page.getByLabel("Message", { exact: true }).fill("Further edited draft.");
+  await expect(page.locator("#delivery")).toHaveText("");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect.poll(() => count).toBe(2);
+  expect(payloads[1].requestId).not.toBe(payloads[0].requestId);
+  expect(payloads[1].message).toBe("Further edited draft.");
+  await send.fulfill({ json: { success: true } });
+  await expect(page.locator("#delivery")).toHaveText("Message sent.");
+  await expect(page.locator("#accepted")).toBeVisible();
 });

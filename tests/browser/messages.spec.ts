@@ -14,6 +14,7 @@ const messages = {
   "delivery-service-unavailable": "Custom service unavailable",
   "delivery-client-timeout": "Custom client timeout",
   "delivery-accepted": "Custom accepted",
+  "delivery-accepted-with-edits": "Custom accepted with edits",
 };
 async function setup(page: import("@playwright/test").Page) {
   await page.addInitScript((messages) => {
@@ -160,6 +161,24 @@ test("accepted event contains only semantic status and preserves green indicator
   expect((await page.evaluate(() => (window as any).deliveryEvents)).at(-1)).toEqual({
     state: "accepted",
     code: "delivery-accepted",
+  });
+});
+
+test("pending edits use their own customizable acceptance message", async ({ page }) => {
+  let release: (() => void) | undefined;
+  await page.route("**/api/contact", async (route) => {
+    await new Promise<void>((resolve) => { release = resolve; });
+    await route.fulfill({ json: { success: true } });
+  });
+  await setup(page);
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect.poll(() => !!release).toBe(true);
+  await page.getByLabel("Message", { exact: true }).fill("Unsent edits");
+  release!();
+  await expect(page.locator("#delivery")).toHaveText("Custom accepted with edits");
+  await expect(page.locator("#accepted")).toBeHidden();
+  expect((await page.evaluate(() => (window as any).deliveryEvents)).at(-1)).toEqual({
+    state: "accepted-with-edits", code: "delivery-accepted-with-edits",
   });
 });
 
