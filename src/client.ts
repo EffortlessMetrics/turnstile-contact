@@ -153,7 +153,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
       )
         return;
       requestId = crypto.randomUUID();
-      if (!sending) setDelivery("idle", "");
+      if (!sending || form.dataset.contactState === "accepted") setDelivery("idle", "");
       try {
         if (persistDraft) localStorage.setItem(draftKey, JSON.stringify(values()));
       } catch {
@@ -326,7 +326,6 @@ export function mountContactForm(options: ContactFormOptions): () => void {
         }
         if (disposed) return;
         if (identity === requestId) {
-          setDelivery("accepted", "Message sent.", "delivery-accepted");
           form.reset();
           requestId = crypto.randomUUID();
           try {
@@ -334,6 +333,7 @@ export function mountContactForm(options: ContactFormOptions): () => void {
           } catch {
             /* Visible acceptance remains valid. */
           }
+          setDelivery("accepted", "Message sent.", "delivery-accepted");
         } else {
           setDelivery(
             "accepted-with-edits",
